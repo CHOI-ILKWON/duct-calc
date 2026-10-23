@@ -426,7 +426,7 @@ function renderRooms(){
       <td><span class="badge ${c.ok?'b-ok':'b-red'}">${c.ok?'OK':'풍속 초과'}</span>${c.limited?' <span class="badge b-info" title="크기가 고정된 덕트에 들어가도록 기구를 낮고 넓게 다시 골랐습니다">덕트에 맞춤</span>':''}</td>
       <td><button class="btn-x" title="삭제" onclick="roomDel('${r.id}')">✕</button></td></tr>`;
   }
-  h+=`</tbody></table></div><p class="note">파란 글씨 = 직접 입력한 값 (지우면 자동값으로 돌아감). W 나 H 한쪽만 바꾸면 다른 쪽이 필요 겉면적에 맞춰 자동으로 바뀝니다. ${isD?'디퓨져는 넥 지름 개략값 — 카탈로그의 넥 풍속·NC·도달거리로 확정.':'크기는 필요 겉면적 이상 중 가장 작은 것 (아스펙트비 3 이하, 50 mm 단위).'}</p>`;
+  h+=`</tbody></table></div><p class="note">파란 글씨 = 직접 입력한 값 (지우면 자동값으로 돌아감). W 를 바꾸면 H 가, H 를 바꾸면 W 가 필요 겉면적에 맞춰 자동으로 바뀝니다 (마지막에 바꾼 쪽이 고정). ${isD?'디퓨져는 넥 지름 개략값 — 카탈로그의 넥 풍속·NC·도달거리로 확정.':'크기는 필요 겉면적 이상 중 가장 작은 것 (아스펙트비 3 이하, 50 mm 단위).'}</p>`;
   $('roomBox').innerHTML=h;
 }
 function itemLabel(it,om){ if(it.t==='o') return om[it.k]?om[it.k].label:'?'; const z=zoneById(it.id); return z?z.name:'?'; }
@@ -484,7 +484,7 @@ function renderZones(){
     h+=`</tbody></table></div></div>`;
   }
   h=`<div class="zl"><div class="zl-p"><div class="diag-h"><b>덕트 계통도</b><span class="card-s">왼쪽 말단 → 오른쪽 팬 · 선 굵기 = 덕트 크기 · ZONE 이름을 누르면 입력으로 이동</span></div>${diagramSVG()}</div><div class="zl-p">${h}</div></div>`;
-  h+=`<p class="note">한 줄의 덕트 = 그 줄까지 합류한 기구 전체를 싣고 다음 줄(팬 쪽)으로 가는 구간. 1번 줄 = 그 ZONE 의 제일 끝. 구간 판정 — 기구 1개 = 말단 · 한 실 2개 이상 = 분기 · 두 실 이상 = 메인. 풍속은 그 구간이 담당하는 실 중 가장 낮은 값. 상류 덕트는 하류보다 작아지지 않게 맞춤. 폭(W)만 바꾸면 높이(H)가, 높이만 바꾸면 폭이 필요 면적에 맞춰 자동으로 바뀌고, 그 변경은 팬 쪽 구간으로 이어집니다. 팬 쪽을 하류보다 작게 넣으면 「치수 역전」.</p>`;
+  h+=`<p class="note">한 줄의 덕트 = 그 줄까지 합류한 기구 전체를 싣고 다음 줄(팬 쪽)으로 가는 구간. 1번 줄 = 그 ZONE 의 제일 끝. 구간 판정 — 기구 1개 = 말단 · 한 실 2개 이상 = 분기 · 두 실 이상 = 메인. 풍속은 그 구간이 담당하는 실 중 가장 낮은 값. 상류 덕트는 하류보다 작아지지 않게 맞춤. W 를 바꾸면 H 가, H 를 바꾸면 W 가 필요 면적에 맞춰 자동으로 바뀌고 (마지막에 바꾼 쪽이 고정), 그 변경은 팬 쪽 구간으로 이어집니다. 팬 쪽을 하류보다 작게 넣으면 「치수 역전」.</p>`;
   h+=segTableHTML();
   $('zoneBox').innerHTML=h;
 }
@@ -639,7 +639,9 @@ function roomSet(id,k,v){
   if(k==='name'||k==='usage'){ r[k]=v; if(k==='usage')r.vO=null; }
   else if(k==='count'){ r.count=Math.max(1,parseInt(v)||1); }
   else if(k==='flow'){ r.flow=Math.max(0,num(v,0)); }
-  else { const x=num(v); r[k]=(x==null||x<=0)?null:x; }
+  else { const x=num(v); r[k]=(x==null||x<=0)?null:x;
+    // W·H 는 마지막에 바꾼 쪽만 고정하고 다른 쪽은 자동으로 되돌린다
+    if(k==='wO')r.hO=null; if(k==='hO')r.wO=null; }
   render();
 }
 const Z=id=>zoneById(id), R=(z,rid)=>z&&z.rows.find(r=>r.id===rid);
@@ -660,7 +662,9 @@ function sortZones(){ S.zones=zoneOrder(); render(); toast('팬에서 먼 ZONE �
 function rowAdd(zid){ const z=Z(zid); if(z){ z.rows.push(newRow()); render(); } }
 function rowDel(zid,rid){ const z=Z(zid); if(z){ z.rows=z.rows.filter(r=>r.id!==rid); render(); } }
 function rowMove(zid,rid,d){ const z=Z(zid); if(!z)return; const i=z.rows.findIndex(r=>r.id===rid), j=i+d; if(i<0||j<0||j>=z.rows.length)return; [z.rows[i],z.rows[j]]=[z.rows[j],z.rows[i]]; render(); }
-function rowSet(zid,rid,k,v){ const r=R(Z(zid),rid); if(!r)return; const x=num(v); r[k]=(x==null||x<=0)?null:x; render(); }
+function rowSet(zid,rid,k,v){ const r=R(Z(zid),rid); if(!r)return; const x=num(v); r[k]=(x==null||x<=0)?null:x;
+  if(k==='wO')r.hO=null; if(k==='hO')r.wO=null;   // 마지막에 바꾼 쪽만 고정, 다른 쪽은 자동
+  render(); }
 function itemAdd(zid,rid,val){ const r=R(Z(zid),rid); if(!r||!val)return; const [t,id]=val.split('|'); r.items.push(t==='o'?{t:'o',k:id}:{t:'z',id}); render(); }
 function itemDel(zid,rid,i){ const r=R(Z(zid),rid); if(!r)return; r.items.splice(i,1); render(); }
 function louverSet(k,v){ const x=num(v); S.louverO[k]=(x==null||x<=0)?null:x; render(); }
