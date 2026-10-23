@@ -215,7 +215,11 @@ function calcTerm(r){
   // 측면 직부는 덕트 높이 상한, 크기가 고정된 덕트는 그 치수에서 여유를 뺀 만큼 → 기구를 낮고 넓게 고른다
   const hLim=Math.min(lim,S.mount==='side'&&S.shape!=='round'?hMax()-GAP():9999);
   const p=rectPick(A,hLim), free=rectPick(A);
-  const w=r.wO||p.w, h=r.hO||p.h, area=w*h/1e6;
+  // 한쪽만 직접 정하면 다른 쪽을 필요 겉면적에 맞춰 다시 구한다
+  let w=r.wO||p.w, h=r.hO||p.h;
+  if(r.wO&&!r.hO) h=Math.max(100,ceil50(A*1e6/r.wO));
+  if(r.hO&&!r.wO) w=Math.max(100,ceil50(A*1e6/r.hO));
+  const area=w*h/1e6;
   return {kind,q,V,Ak,a,A,w,h,area,vAct:q/3600/(area*a),vFace:q/3600/area,ok:q/3600/(area*a)<=V+1e-6,limited:!r.wO&&!r.hO&&(p.w!==free.w||p.h!==free.h)};
 }
 
@@ -422,7 +426,7 @@ function renderRooms(){
       <td><span class="badge ${c.ok?'b-ok':'b-red'}">${c.ok?'OK':'풍속 초과'}</span>${c.limited?' <span class="badge b-info" title="크기가 고정된 덕트에 들어가도록 기구를 낮고 넓게 다시 골랐습니다">덕트에 맞춤</span>':''}</td>
       <td><button class="btn-x" title="삭제" onclick="roomDel('${r.id}')">✕</button></td></tr>`;
   }
-  h+=`</tbody></table></div><p class="note">파란 글씨 = 직접 입력한 값 (지우면 자동값으로 돌아감). ${isD?'디퓨져는 넥 지름 개략값 — 카탈로그의 넥 풍속·NC·도달거리로 확정.':'크기는 필요 겉면적 이상 중 가장 작은 것 (아스펙트비 3 이하, 50 mm 단위).'}</p>`;
+  h+=`</tbody></table></div><p class="note">파란 글씨 = 직접 입력한 값 (지우면 자동값으로 돌아감). W 나 H 한쪽만 바꾸면 다른 쪽이 필요 겉면적에 맞춰 자동으로 바뀝니다. ${isD?'디퓨져는 넥 지름 개략값 — 카탈로그의 넥 풍속·NC·도달거리로 확정.':'크기는 필요 겉면적 이상 중 가장 작은 것 (아스펙트비 3 이하, 50 mm 단위).'}</p>`;
   $('roomBox').innerHTML=h;
 }
 function itemLabel(it,om){ if(it.t==='o') return om[it.k]?om[it.k].label:'?'; const z=zoneById(it.id); return z?z.name:'?'; }
