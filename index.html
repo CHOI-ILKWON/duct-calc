@@ -266,12 +266,14 @@ function sizeSeg(flow,V,ctx,ov){
   let h=ov.h||Math.max(ctx.hPrev||0,ctx.hIn||0)||Math.min(HM,Math.max(100,ceil50(Math.sqrt(A)*1000)));
   if(!ov.h&&ctx.mH) h=Math.max(h,ceil50(ctx.mH));          // 측면 직부: 덕트 높이 ≥ 기구 높이 + 여유 × 2
   if(!ov.h&&h>cap.h) h=cap.h;                               // 팬 쪽에서 크기를 고정한 줄보다 크지 않게
-  const wOf=hh=>Math.min(Math.max(100,ceil50(need*1e6/hh),ctx.mW?ceil50(ctx.mW):0),ov.w?1e9:cap.w);   // 하부 직부: 덕트 폭 ≥ 기구 단변 + 여유 × 2
+  const wOf=hh=>Math.min(Math.max(100,ceil50(need*1e6/hh),ctx.mW?ceil50(ctx.mW):0,ctx.wPrev||0),ov.w?1e9:cap.w);   // 같은 ZONE 안에서는 팬 쪽으로 갈수록 폭·높이가 줄지 않게   // 하부 직부: 덕트 폭 ≥ 기구 단변 + 여유 × 2
   let w=ov.w||wOf(h), auto=false;
+  // 폭만 직접 정하면 높이를 필요 면적에 맞춰 다시 구한다 (기구 측면 직부 조건 포함)
+  if(ov.w&&!ov.h){ h=Math.max(100,ceil50(need*1e6/ov.w),ctx.mH?ceil50(ctx.mH):0); auto=true; }
   if(!ov.h&&!ov.w){
     // 기준: AC-027 Rule 3 — 아스펙트비 4 초과면 높이를 50 mm 씩 올려 찾고, 천장 속 한계면 분할 검토
     while(w/h>4+1e-9&&h+50<=HM){ h+=50; w=wOf(h); auto=true; }
-    while(h/w>4+1e-9&&h-50>=Math.max(100,ctx.mH?ceil50(ctx.mH):0)){ h-=50; w=wOf(h); auto=true; }
+    while(h/w>4+1e-9&&h-50>=Math.max(100,ctx.mH?ceil50(ctx.mH):0,ctx.hPrev||0)){ h-=50; w=wOf(h); auto=true; }
   }
   const capped=(!ov.w&&w>=cap.w-1e-6&&cap.w<1e9&&w*h<need*1e6-1)||(!ov.h&&h>=cap.h-1e-6&&cap.h<1e9&&w*h<need*1e6-1);
   const area=w*h/1e6, L=Math.max(w,h), p=plateRect(L), m=marginRect(L);
@@ -294,7 +296,8 @@ function computeCaps(){
 }
 // 덕트 ↔ 기구 맞춤: ① 기구에 맞춰 덕트를 키우고 ② 크기가 고정된 덕트에 붙는 기구는 그 덕트에 들어가게 다시 고른다
 function solve(){
-  TLIM={}; MEMO={}; computeCaps(); S.zones.forEach(z=>calcZone(z.id));
+  // 크기 변경은 팬 쪽으로만 전파한다 (말단이 커지면 분기·메인이 따라 커짐). 팬 쪽을 줄여도 말단 쪽은 그대로 두고 「치수 역전」으로 알린다
+  TLIM={}; MEMO={}; CAP={}; S.zones.forEach(z=>calcZone(z.id));
   if(S.mount==='collar') return;
   const L={};
   for(const z of S.zones) for(const s of calcZone(z.id).segs){ if(s.empty||!s.fixed) continue;
@@ -327,7 +330,7 @@ function calcZone(zid,stack=[]){
       else if(S.mount==='bottom') mc.mW=Math.max(mc.mW,t.h+GAP());
       else mc.mH=Math.max(mc.mH,t.h+GAP());
     }
-    const ctx={ceil:zCeil(z),cap:(CAP[zid]||[])[z.rows.indexOf(row)],...mc,hPrev:prev?prev.h:0,hIn:Math.max(0,...lasts.map(l=>l.h||0)),
+    const ctx={ceil:zCeil(z),cap:(CAP[zid]||[])[z.rows.indexOf(row)],...mc,hPrev:prev?prev.h:0,wPrev:prev?prev.w:0,hIn:Math.max(0,...lasts.map(l=>l.h||0)),
       minArea:Math.max(prev?prev.area:0,...lasts.map(l=>l.area)),minD:Math.max(prev?prev.d||0:0,...lasts.map(l=>l.d||0))};
     const sz=sizeSeg(flow,V,ctx,{w:row.wO,h:row.hO,d:row.dO});
     const seg=Object.assign({row,flow,type,V,cnt:outlets.length,subs:subs.map(s=>s.zid),direct:row.items.filter(it=>it.t==='o'&&om[it.k]).map(it=>om[it.k].room.id)},sz);
@@ -477,7 +480,7 @@ function renderZones(){
     h+=`</tbody></table></div></div>`;
   }
   h=`<div class="zl"><div class="zl-p"><div class="diag-h"><b>덕트 계통도</b><span class="card-s">왼쪽 말단 → 오른쪽 팬 · 선 굵기 = 덕트 크기 · ZONE 이름을 누르면 입력으로 이동</span></div>${diagramSVG()}</div><div class="zl-p">${h}</div></div>`;
-  h+=`<p class="note">한 줄의 덕트 = 그 줄까지 합류한 기구 전체를 싣고 다음 줄(팬 쪽)으로 가는 구간. 1번 줄 = 그 ZONE 의 제일 끝. 구간 판정 — 기구 1개 = 말단 · 한 실 2개 이상 = 분기 · 두 실 이상 = 메인. 풍속은 그 구간이 담당하는 실 중 가장 낮은 값. 상류 덕트는 하류보다 작아지지 않게 맞춤. 크기를 직접 바꾸면 팬 쪽 구간이 모두 다시 맞춰지고, 하류보다 작게 넣으면 「치수 역전」.</p>`;
+  h+=`<p class="note">한 줄의 덕트 = 그 줄까지 합류한 기구 전체를 싣고 다음 줄(팬 쪽)으로 가는 구간. 1번 줄 = 그 ZONE 의 제일 끝. 구간 판정 — 기구 1개 = 말단 · 한 실 2개 이상 = 분기 · 두 실 이상 = 메인. 풍속은 그 구간이 담당하는 실 중 가장 낮은 값. 상류 덕트는 하류보다 작아지지 않게 맞춤. 폭(W)만 바꾸면 높이(H)가, 높이만 바꾸면 폭이 필요 면적에 맞춰 자동으로 바뀌고, 그 변경은 팬 쪽 구간으로 이어집니다. 팬 쪽을 하류보다 작게 넣으면 「치수 역전」.</p>`;
   h+=segTableHTML();
   $('zoneBox').innerHTML=h;
 }
@@ -612,7 +615,7 @@ function renderRef(){
   <p>열전도율 등급 가 20 · 나 25 · 다 30 · 라 35 mm. 에너지절약설계기준 EPI 7번 적용 시 ×1.2 후 5 mm 올림. 외기·배기·다습 구간은 결로 검토 별도. 주방배기는 불연재(화기 50 / 일반 25 이상), 제연덕트 25.</p>
   <h4>각 면 여유 (보온 바깥에서, mm) — 어림값</h4>
   <p>각형 장변 750 이하: 위 45 · 아래 55 · 좌우 75 / 760~1,500: 55 · 75 · 95 / 1,500 초과: 65 · 95 · 115<br>원형 600 이하: 위 40 · 아래 20 · 좌우 30 / 600 초과: 50 · 40 · 50<br>위 = 플랜지·볼트·작업 틈 · 아래 = 플랜지·지지앵글 · 좌우 = 플랜지·행거 볼트</p>
-  <h4>덕트 ↔ 기구 맞춤</h4><p>직부(하부·측면)이면 기구가 붙는 줄의 덕트 안치수 ≥ 기구 + 여유 × 2 (기본 한쪽 25 mm). 덕트가 자동이면 덕트를 키우고, 덕트 크기를 직접 정했거나 팬 쪽 고정 크기에 묶였으면 그 실의 기구를 낮고 넓게 다시 고른다. 크기를 직접 정한 줄은 그보다 말단 쪽(앞 줄 · 그 줄로 들어오는 갈래)의 상한이 된다.</p>
+  <h4>덕트 ↔ 기구 맞춤</h4><p>직부(하부·측면)이면 기구가 붙는 줄의 덕트 안치수 ≥ 기구 + 여유 × 2 (기본 한쪽 25 mm). 덕트가 자동이면 덕트를 키우고, 덕트 크기를 직접 정했거나 팬 쪽 고정 크기에 묶였으면 그 실의 기구를 낮고 넓게 다시 고른다. 크기 변경은 팬 쪽으로만 전파된다 — 말단·분기를 키우면 그보다 팬 쪽 구간이 따라 커지고, 팬 쪽을 줄여도 말단 쪽은 바뀌지 않으며 하류보다 작으면 「치수 역전」. 폭만 직접 정하면 높이를, 높이만 정하면 폭을 필요 면적에 맞춰 다시 구한다.</p>
   <h4>아스펙트비</h4><p>학회 설계기준 6장 (8) 「원칙적으로 4:1 이하」. 3 이하 양호 · 3~4 주의 · 4 초과 분할 검토. 4 에서 마찰 약 1.25 배.</p>
   <h4>루버 — KDS 31 25 30 4.4</h4><p>외기: 3,300 L/s 이상 전면풍속 2.0 m/s 이하, 미만 A = 0.4 + 0.00036Q · 배기: 2.5 m/s / A = 0.4 + 0.00025Q (원문 오탈자 재검증 필요) · 개구율 45% 이하 별도 산정.</p>
   <h4>팬 · 부속 — KDS 31 25 30</h4><p>흡입측 직관 날개지름 × 4 (또는 × 1 + 터닝베인 엘보) · 토출측 직관 출구 장변 × 1.5 · 엘보 곡률반경 1.5 이상 · 분지덕트 VD · 플렉시블 2.0 m 이하. 축소 한쪽 30° · 확대 한쪽 15° (KCS 31 20 20 3.1.2, 원문 대조 필요).</p>`;
