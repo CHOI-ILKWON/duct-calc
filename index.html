@@ -39,7 +39,7 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI','Noto Sans KR',sans
 .btn:hover{border-color:var(--accent);color:var(--accent)}
 .btn-p{background:var(--accent);color:#fff;border-color:var(--accent)}
 .btn-p:hover{background:#1e40af;color:#fff}
-.btn-x{height:24px;width:24px;padding:0;border:none;background:none;color:var(--text2);cursor:pointer;font-size:14px}
+.btn-x{height:24px;width:20px;padding:0;border:none;background:none;color:var(--text2);cursor:pointer;font-size:14px}
 .btn-x:hover{color:var(--red)}
 .tw{overflow-x:auto}
 table.t{width:100%;border-collapse:collapse;font-size:12px;white-space:nowrap}
@@ -56,7 +56,7 @@ table.t tr.seg-main td{background:#f0f4ff}
 .zone-h{display:flex;align-items:center;gap:8px;padding:8px 12px;background:var(--surface3);border-bottom:1px solid var(--border);flex-wrap:wrap}
 .zone-h .zn{font-weight:700;font-size:13px;width:150px}
 .zone-root{border-color:var(--accent)}
-.chips{display:flex;flex-wrap:wrap;gap:4px;align-items:center;min-width:220px}
+.chips{display:flex;flex-wrap:wrap;gap:4px;align-items:center;min-width:140px}
 .chip{display:inline-flex;align-items:center;gap:3px;padding:1px 4px 1px 8px;border-radius:12px;font-size:11px;font-weight:600;background:var(--accent-l);color:var(--accent);border:1px solid #bfdbfe}
 .chip.z{background:#f5f3ff;color:#6d28d9;border-color:#ddd6fe}
 .chip button{border:none;background:none;color:inherit;cursor:pointer;font-size:12px;line-height:1;padding:0 2px;opacity:.6}
@@ -83,7 +83,13 @@ details.ref .card-b{border-top:1px solid var(--border)}
 .ref ul{padding-left:18px}
 .note{font-size:11px;color:var(--text2);margin-top:8px}
 .empty{padding:20px;text-align:center;color:var(--text2)}
-@media print{.hdr,.btn,.btn-x,.add-sel,.no-print{display:none!important}body{background:#fff}.card{box-shadow:none;break-inside:avoid}details.ref{display:none}}
+.zl{display:grid;grid-template-columns:minmax(0,1.15fr) minmax(0,.85fr);gap:16px;align-items:start}
+.zl-r{position:sticky;top:64px;border:1px solid var(--border);border-radius:10px;background:#fbfcfe;max-height:calc(100vh - 80px);overflow:auto;padding:10px 12px}
+.diag-h{display:flex;gap:8px;align-items:baseline;flex-wrap:wrap;margin-bottom:6px}
+svg.diag{display:block;font-family:inherit}
+.dt-s{font-size:10.5px;fill:#111827;font-weight:600}.dt-f{font-size:10px;fill:#6b7280}.dt-o{font-size:10px;fill:#1d4ed8;font-weight:600}.dt-z{font-size:12px;fill:#6d28d9;font-weight:700}
+@media (max-width:1100px){.zl{grid-template-columns:1fr}.zl-r{position:static;max-height:none}}
+@media print{.zl{grid-template-columns:1fr}.zl-r{position:static;max-height:none}.hdr,.btn,.btn-x,.add-sel,.no-print{display:none!important}body{background:#fff}.card{box-shadow:none;break-inside:avoid}details.ref{display:none}}
 @media (max-width:700px){.wrap{padding:12px}.hdr input{width:120px}}
 </style>
 </head>
@@ -104,7 +110,7 @@ details.ref .card-b{border-top:1px solid var(--border)}
 <div class="wrap">
   <div class="card"><div class="card-h"><span class="card-t">1. 계통 설정</span><span class="card-s">급기/배기 · 덕트 형상 · 천장 속 · 보온</span></div><div class="card-b" id="sysBox"></div></div>
   <div class="card"><div class="card-h"><span class="card-t">2. 실 · 기구</span><span class="card-s" id="roomSub"></span><span class="sp" style="flex:1"></span><button class="btn" onclick="roomAdd()">+ 실 추가</button></div><div class="card-b" id="roomBox"></div></div>
-  <div class="card"><div class="card-h"><span class="card-t">3. ZONE 구성</span><span class="card-s">말단부터 순서대로 — 한 줄에 그 지점에서 합류하는 기구·ZONE 을 체크</span><span class="sp" style="flex:1"></span><button class="btn" onclick="autoZones()">실별 자동 구성</button><button class="btn btn-p" onclick="zoneAdd()">+ ZONE 추가</button></div><div class="card-b" id="zoneBox"></div></div>
+  <div class="card"><div class="card-h"><span class="card-t">3. ZONE 구성</span><span class="card-s">제일 끝(말단)부터 팬 쪽으로 — 한 줄에 그 지점에서 합류하는 기구·ZONE 을 체크</span><span class="sp" style="flex:1"></span><button class="btn" onclick="autoZones()">실별 자동 구성</button><button class="btn btn-p" onclick="zoneAdd()">+ ZONE 추가</button></div><div class="card-b" id="zoneBox"></div></div>
   <div class="card"><div class="card-h"><span class="card-t">4. 계통 요약</span><span class="card-s">팬 · 루버 · 계통도 · 검토사항</span></div><div class="card-b" id="sumBox"></div></div>
   <div class="card"><details class="ref"><summary>적용 기준 (근거)</summary><div class="card-b" id="refBox"></div></details></div>
 </div>
@@ -153,7 +159,7 @@ function pickStd(list,mm){ for(const d of list) if(d>=mm-1e-6) return d; return 
 const KEY='duct-calc-v2';
 let _n=0; const uid=p=>p+Date.now().toString(36).slice(-4)+(++_n).toString(36);
 function blank(){ return {v:2,project:'',mode:'supply',shape:'rect',device:'inline',ventOnly:true,ceil:600,
-  insGrade:'na',epi:true,insOff:false,regOpen:0.65,grilleOpen:0.70,louverOpen:0.50,louverO:{w:null,h:null},
+  insGrade:'na',epi:true,insOff:false,mount:'collar',regOpen:0.65,grilleOpen:0.70,louverOpen:0.50,louverO:{w:null,h:null},
   rooms:[],zones:[]}; }
 let S=blank();
 const $=id=>document.getElementById(id);
@@ -172,9 +178,10 @@ function termVelDefault(r){
   return u[5];
 }
 // 사각 기구 크기 — 필요 겉면적 이상 중 가장 작은 것, 아스펙트비 3 이하
-function rectPick(A){
+function rectPick(A,hLim=9999){
   let best=null;
   for(const h of [100,150,200,250,300,350,400,450,500,600]){
+    if(h>hLim) continue;
     const w=Math.max(h,ceil50(A*1e6/h)); const ar=w/h, a=w*h;
     if(ar>3+1e-9) continue;
     if(!best||a<best.a-1||(Math.abs(a-best.a)<1&&ar<best.ar)) best={w,h,a,ar};
@@ -189,7 +196,9 @@ function calcTerm(r){
     const d=r.dO||pickStd(NECK,Math.sqrt(4*Ak/Math.PI)*1000), area=Math.PI*d*d/4/1e6;
     return {kind,q,V,Ak,d,area,vAct:q/3600/area,ok:q/3600/area<=V+1e-6};
   }
-  const a=kind==='grille'?S.grilleOpen:S.regOpen, A=Ak/a, p=rectPick(A);
+  const a=kind==='grille'?S.grilleOpen:S.regOpen, A=Ak/a;
+  // 측면 직부 — 기구 높이 + 100 이 덕트 높이 상한 안에 들어가야 한다 → 기구를 낮고 넓게 고른다
+  const p=rectPick(A,S.mount==='side'?hMax()-100:9999);
   const w=r.wO||p.w, h=r.hO||p.h, area=w*h/1e6;
   return {kind,q,V,Ak,a,A,w,h,area,vAct:q/3600/(area*a),vFace:q/3600/area,ok:q/3600/(area*a)<=V+1e-6};
 }
@@ -221,29 +230,32 @@ function normalize(){
     });
   }
 }
-const hMax=()=>Math.max(100,floor50(S.ceil-45-55-2*insT()-2*0.5));
+const hMax=(c=S.ceil)=>Math.max(100,floor50(c-45-55-2*insT()-2*0.5));
+const zCeil=z=>(z&&z.ceil)||S.ceil;
 
 function sizeSeg(flow,V,ctx,ov){
   const A=flow/3600/V, ins=insT();
   if(S.shape==='round'){
-    const need=Math.max(Math.sqrt(4*A/Math.PI)*1000,ctx.minD||0);
+    const need=Math.max(Math.sqrt(4*A/Math.PI)*1000,ctx.minD||0,ctx.mD||0);
     const d=ov.d||pickStd(SPIRAL,need), area=Math.PI*d*d/4/1e6, p=plateRound(d), m=marginRound(d);
     const oD=d+2*p+2*ins;
-    return {A,d,area,vAct:flow/3600/area,ar:1,plate:p,ins,m,outW:oD,outH:oD,totW:oD+m.l+m.r,totH:oD+m.t+m.b,dim:'φ'+d};
+    return {A,d,area,vAct:flow/3600/area,ar:1,plate:p,ins,m,outW:oD,outH:oD,totW:oD+m.l+m.r,totH:oD+m.t+m.b,dim:'φ'+d,ceil:ctx.ceil,
+      rev:d<(ctx.minD||0)-1e-6,mountBad:ctx.mD&&d<ctx.mD-1e-6};
   }
-  const HM=hMax(), need=Math.max(A,ctx.minArea||0);
+  const HM=hMax(ctx.ceil), need=Math.max(A,ctx.minArea||0);
   let h=ov.h||Math.max(ctx.hPrev||0,ctx.hIn||0)||Math.min(HM,Math.max(100,ceil50(Math.sqrt(A)*1000)));
-  if(!ov.h) h=Math.min(h,Math.max(HM,ctx.hPrev||0,ctx.hIn||0));
-  const wOf=hh=>Math.max(100,ceil50(need*1e6/hh));
+  if(!ov.h&&ctx.mH) h=Math.max(h,ceil50(ctx.mH));          // 측면 직부: 덕트 높이 ≥ 기구 높이 + 100
+  const wOf=hh=>Math.max(100,ceil50(need*1e6/hh),ctx.mW?ceil50(ctx.mW):0);   // 하부 직부: 덕트 폭 ≥ 기구 단변 + 100
   let w=ov.w||wOf(h), auto=false;
   if(!ov.h&&!ov.w){
     // 기준: AC-027 Rule 3 — 아스펙트비 4 초과면 높이를 50 mm 씩 올려 찾고, 천장 속 한계면 분할 검토
     while(w/h>4+1e-9&&h+50<=HM){ h+=50; w=wOf(h); auto=true; }
-    while(h/w>4+1e-9&&h-50>=100){ h-=50; w=wOf(h); auto=true; }
+    while(h/w>4+1e-9&&h-50>=Math.max(100,ctx.mH?ceil50(ctx.mH):0)){ h-=50; w=wOf(h); auto=true; }
   }
   const area=w*h/1e6, L=Math.max(w,h), p=plateRect(L), m=marginRect(L);
   const outW=w+2*p+2*ins, outH=h+2*p+2*ins;
-  return {A,w,h,area,vAct:flow/3600/area,ar:L/Math.min(w,h),plate:p,ins,m,outW,outH,totW:outW+m.l+m.r,totH:outH+m.t+m.b,auto,dim:w+'×'+h};
+  return {A,w,h,area,vAct:flow/3600/area,ar:L/Math.min(w,h),plate:p,ins,m,outW,outH,totW:outW+m.l+m.r,totH:outH+m.t+m.b,auto,dim:w+'×'+h,ceil:ctx.ceil,
+    rev:area<(ctx.minArea||0)-1e-9,mountBad:(ctx.mW&&w<ctx.mW-1e-6)||(ctx.mH&&h<ctx.mH-1e-6)};
 }
 
 let MEMO={};
@@ -263,7 +275,16 @@ function calcZone(zid,stack=[]){
     // 그 구간이 담당하는 실 중 가장 조용해야 하는 실의 풍속 (가장 낮은 값)
     const V=row.vO||Math.min(...[...rooms].map(id=>U((S.rooms.find(r=>r.id===id)||{}).usage)[SEG_COL[type]]));
     const lasts=subs.map(s=>s.last).filter(Boolean);
-    const ctx={hPrev:prev?prev.h:0,hIn:Math.max(0,...lasts.map(l=>l.h||0)),
+    // 이 줄에 직접 붙는 기구 — 접속 방식에 따라 덕트 최소 치수를 준다
+    const mc={mW:0,mH:0,mD:0};
+    if(S.mount!=='collar') for(const it of row.items) if(it.t==='o'&&om[it.k]){
+      const t=calcTerm(om[it.k].room);
+      if(t.kind==='diff') mc.mD=Math.max(mc.mD,t.d);
+      else if(S.shape==='round') mc.mD=Math.max(mc.mD,t.h+100);
+      else if(S.mount==='bottom') mc.mW=Math.max(mc.mW,t.h+100);
+      else mc.mH=Math.max(mc.mH,t.h+100);
+    }
+    const ctx={ceil:zCeil(z),...mc,hPrev:prev?prev.h:0,hIn:Math.max(0,...lasts.map(l=>l.h||0)),
       minArea:Math.max(prev?prev.area:0,...lasts.map(l=>l.area)),minD:Math.max(prev?prev.d||0:0,...lasts.map(l=>l.d||0))};
     const sz=sizeSeg(flow,V,ctx,{w:row.wO,h:row.hO,d:row.dO});
     const seg=Object.assign({row,flow,type,V,cnt:outlets.length,subs:subs.map(s=>s.zid)},sz);
@@ -275,7 +296,9 @@ function calcZone(zid,stack=[]){
 function segChecks(s){
   const c=[];
   if(s.ar>4+1e-9) c.push(['b-red','분할 검토']); else if(s.ar>3+1e-9) c.push(['b-warn','AR 주의']);
-  if(s.totH>S.ceil) c.push(['b-red','천장 속 초과']);
+  if(s.totH>s.ceil) c.push(['b-red','천장 속 초과']);
+  if(s.rev) c.push(['b-red','치수 역전']);
+  if(s.mountBad) c.push(['b-red','기구 접속 불가']);
   if(s.area>=0.6) c.push(['b-warn','내진 대상']);
   if(s.vAct>15) c.push(['b-red','15 m/s 초과']);
   if(s.auto) c.push(['b-info','높이 자동']);
@@ -309,14 +332,18 @@ function renderSys(){
     <div class="fg"><span class="fl">계통</span>${sel([['supply','급기 (취출구)'],['exhaust','배기 (흡입구)']],S.mode,"setSys('mode',this.value)")}</div>
     <div class="fg"><span class="fl">덕트 형상</span>${sel([['rect','사각 덕트'],['round','원형 덕트 (스파이럴)']],S.shape,"setSys('shape',this.value)")}</div>
     <div class="fg"><span class="fl">장비</span>${sel([['inline','인라인덕트팬'],['hrv','전열교환기'],['ceiling','천정형팬'],['ahu','공조기']],S.device,"setSys('device',this.value)")}</div>
-    <div class="fg"><span class="fl">덕트 설치 가능 높이 (mm)</span><input class="fi" type="number" step="50" value="${S.ceil}" onchange="setSys('ceil',this.value)"><span class="fh">천장 속에서 보·천장재를 뺀 유효 높이</span></div>
+    <div class="fg"><span class="fl">덕트 설치 가능 높이 (mm)</span><input class="fi" type="number" step="50" value="${S.ceil}" onchange="setSys('ceil',this.value)"><span class="fh">기본값 · 보 밑 등은 ZONE 마다 따로 입력</span></div>
     <div class="fg"><span class="fl">보온재 열전도율 등급</span>${sel(Object.entries(INS).map(([k,v])=>[k,v[1]+' · '+v[0]+'T']),S.insGrade,"setSys('insGrade',this.value)")}</div>
     <div class="fg"><span class="fl">보온 옵션</span>
       <label class="chk"><input type="checkbox" ${S.epi?'checked':''} onchange="setSys('epi',this.checked)">EPI 7번 (+20%)</label>
       <label class="chk" style="height:auto"><input type="checkbox" ${S.insOff?'checked':''} onchange="setSys('insOff',this.checked)">보온 없음</label>
       <span class="fh">적용 보온 두께 <b>${t} mm</b></span></div>
     <div class="fg"><span class="fl">기구 개구율 (레지스터 / 그릴)</span><div style="display:flex;gap:6px"><input class="fi" style="width:50%" type="number" step="0.05" value="${S.regOpen}" onchange="setSys('regOpen',this.value)"><input class="fi" style="width:50%" type="number" step="0.05" value="${S.grilleOpen}" onchange="setSys('grilleOpen',this.value)"></div><span class="fh">카탈로그 값 우선 · OBD 부착 시 낮아짐</span></div>
-    <div class="fg"><span class="fl">루버 개구율</span><input class="fi" type="number" step="0.05" value="${S.louverOpen}" onchange="setSys('louverOpen',this.value)"><span class="fh">0.45 이하면 면적 보정 (KDS 4.4)</span></div>
+    <div class="fg"><span class="fl">기구 접속 방식</span>${sel(S.shape==='round'
+        ?[['collar','칼라·플렉시블 (제약 없음)'],['bottom','덕트 직부 (지름 ≥ 기구)']]
+        :[['collar','칼라·플렉시블 (제약 없음)'],['bottom','덕트 하부 직부'],['side','덕트 측면 직부']],S.mount==='side'&&S.shape==='round'?'bottom':S.mount,"setSys('mount',this.value)")}
+      <span class="fh">${S.mount==='collar'?'기구와 덕트 치수 연동 없음':S.shape==='round'?'기구가 붙는 줄의 덕트 지름 ≥ 기구':S.mount==='bottom'?'기구가 붙는 줄의 덕트 폭 ≥ 기구 단변 + 100':'덕트 높이 ≥ 기구 높이 + 100 · 기구는 낮고 넓게'}</span></div>
+    <div class="fg"><span class="fl">외벽 루버 개구율 (외기·배기)</span><input class="fi" type="number" step="0.05" value="${S.louverOpen}" onchange="setSys('louverOpen',this.value)"><span class="fh">0.45 이하면 면적 보정 (KDS 4.4)</span></div>
     ${S.mode==='exhaust'?`<div class="fg"><span class="fl">흡입구 기준</span><label class="chk"><input type="checkbox" ${S.ventOnly?'checked':''} onchange="setSys('ventOnly',this.checked)">환기 전용 계통 (실내 흡입구 2.0 m/s)</label><span class="fh">학회 표 4.6 · 공조 계통이면 해제</span></div>`:''}
   </div>`;
 }
@@ -350,62 +377,117 @@ function renderRooms(){
   $('roomBox').innerHTML=h;
 }
 function itemLabel(it,om){ if(it.t==='o') return om[it.k]?om[it.k].label:'?'; const z=zoneById(it.id); return z?z.name:'?'; }
+// ZONE 표시 순서 — 팬에서 가장 먼 ZONE 부터. 팬 연결 ZONE 에서 거꾸로 내려가며 깊은 갈래를 먼저 꺼낸다
+function zoneOrder(){
+  const roots=rootZones(), seen=new Set(), out=[];
+  const kids=z=>{ const L=[]; for(const r of (zoneById(z)||{rows:[]}).rows) for(const it of r.items) if(it.t==='z')L.push(it.id); return L; };
+  const ht=(z,d=0)=>d>50?0:Math.max(0,...kids(z).map(k=>1+ht(k,d+1)));
+  const walk=z=>{ if(seen.has(z))return; seen.add(z); kids(z).slice().sort((x,y)=>ht(y)-ht(x)).forEach(walk); out.push(z); };
+  const loose=S.zones.filter(z=>!roots.includes(z.id)&&!usedSets().z.has(z.id)).map(z=>z.id);
+  loose.forEach(walk); roots.forEach(walk);
+  for(const z of S.zones) if(!seen.has(z.id)) out.unshift(z.id);
+  return out.map(zoneById).filter(Boolean);
+}
 function renderZones(){
   if(!S.zones.length){ $('zoneBox').innerHTML=`<div class="empty">「실별 자동 구성」을 누르면 실마다 일렬 ZONE 과 MAIN 이 만들어집니다.<br>직접 만들려면 「+ ZONE 추가」.</div>`; return; }
   const om=outletMap(), used=usedSets(), roots=rootZones(), round=S.shape==='round';
   let h='';
-  for(const z of S.zones){
+  for(const z of zoneOrder()){
     const res=calcZone(z.id), isRoot=roots.includes(z.id);
     const parent=S.zones.find(p=>p.rows.some(r=>r.items.some(it=>it.t==='z'&&it.id===z.id)));
-    h+=`<div class="zone${isRoot?' zone-root':''}"><div class="zone-h">
+    h+=`<div class="zone${isRoot?' zone-root':''}" id="zc-${z.id}"><div class="zone-h">
       <input class="ti zn" value="${esc(z.name)}" onchange="zoneSet('${z.id}','name',this.value)">
-      ${isRoot?'<span class="badge b-info">팬 연결</span>':parent?`<span class="badge b-ok">→ ${esc(parent.name)} 에 합류</span>`:''}
-      <span class="card-s">누적 ${f0(res.flow)} CMH · 기구 ${res.outlets.length}개</span>
+      ${isRoot?'<span class="badge b-info">팬 연결</span>':parent?`<span class="badge b-ok">→ ${esc(parent.name)} 에 합류</span>`:'<span class="badge b-warn">미연결</span>'}
+      <span class="card-s">${f0(res.flow)} CMH · 기구 ${res.outlets.length}개</span>
       <span style="flex:1"></span>
+      <span class="card-s">천장 속</span><input class="ti n${z.ceil?' ov':''}" type="number" step="50" value="${zCeil(z)}" title="이 ZONE 의 덕트 설치 가능 높이 (비우면 기본값)" onchange="zoneSet('${z.id}','ceil',this.value)">
       <button class="btn" onclick="rowAdd('${z.id}')">+ 줄</button>
       <button class="btn-x" title="ZONE 삭제" onclick="zoneDel('${z.id}')">✕</button></div>
       <div class="tw"><table class="t"><thead><tr>
-        <th>순서</th><th>이 지점에서 합류 (기구 · ZONE)</th><th>누적<br>개수</th><th>누적 풍량<br>(CMH)</th><th>구간</th><th>풍속<br>(m/s)</th><th>필요면적<br>(m²)</th>
-        <th colspan="${round?1:2}">${round?'지름 φ (mm)':'크기 W × H (mm)'}</th><th>실제 풍속<br>(m/s)</th>${round?'':'<th>AR</th>'}<th>판두께<br>(mm)</th><th>보온 바깥<br>(mm)</th><th>필요 공간<br>폭 × 높이</th><th>검토</th><th></th></tr></thead><tbody>`;
+        <th>순서</th><th>이 지점에서 합류</th><th>풍량<br>(CMH)</th><th>구간</th><th>풍속<br>(m/s)</th>
+        <th colspan="${round?1:2}">${round?'φ (mm)':'W × H (mm)'}</th><th>실제<br>(m/s)</th><th>검토</th><th></th></tr></thead><tbody>`;
     z.rows.forEach((row,ri)=>{
       const s=res.segs[ri];
       const chips=row.items.map((it,ii)=>`<span class="chip${it.t==='z'?' z':''}">${esc(itemLabel(it,om))}<button onclick="itemDel('${z.id}','${row.id}',${ii})">✕</button></span>`).join('');
       const optsO=outletList().filter(o=>!used.o.has(o.key)).map(o=>`<option value="o|${o.key}">${esc(o.label)}</option>`).join('');
       const optsZ=S.zones.filter(x=>x.id!==z.id&&!used.z.has(x.id)&&!zoneContains(x.id,z.id)).map(x=>`<option value="z|${x.id}">${esc(x.name)}</option>`).join('');
       const addSel=(optsO||optsZ)?`<select class="add-sel" onchange="itemAdd('${z.id}','${row.id}',this.value)"><option value="">+ 추가</option>${optsO?`<optgroup label="기구">${optsO}</optgroup>`:''}${optsZ?`<optgroup label="ZONE">${optsZ}</optgroup>`:''}</select>`:'';
-      const ctl=`<button class="btn-x" title="위로" onclick="rowMove('${z.id}','${row.id}',-1)">↑</button><button class="btn-x" title="아래로" onclick="rowMove('${z.id}','${row.id}',1)">↓</button><button class="btn-x" title="줄 삭제" onclick="rowDel('${z.id}','${row.id}')">✕</button>`;
-      if(!s||s.empty){ h+=`<tr><td>${ri+1}</td><td class="l"><div class="chips">${chips}${addSel}</div></td><td colspan="${round?11:13}" class="cv">기구 또는 ZONE 을 추가하세요</td><td style="white-space:nowrap">${ctl}</td></tr>`; return; }
+      const ctl=`<button class="btn-x" title="말단 쪽으로" onclick="rowMove('${z.id}','${row.id}',-1)">↑</button><button class="btn-x" title="팬 쪽으로" onclick="rowMove('${z.id}','${row.id}',1)">↓</button><button class="btn-x" title="줄 삭제" onclick="rowDel('${z.id}','${row.id}')">✕</button>`;
+      const lab=ri===0?`${ri+1}<div class="card-s">끝</div>`:`${ri+1}`;
+      if(!s||s.empty){ h+=`<tr><td>${lab}</td><td class="l"><div class="chips">${chips}${addSel}</div></td><td colspan="${round?6:7}" class="cv">기구 또는 ZONE 을 추가하세요</td><td style="white-space:nowrap">${ctl}</td></tr>`; return; }
       const chk=segChecks(s).map(c=>`<span class="badge ${c[0]}">${c[1]}</span>`).join(' ')||'<span class="badge b-ok">OK</span>';
-      h+=`<tr class="${s.type==='main'?'seg-main':''}"><td>${ri+1}</td><td class="l"><div class="chips">${chips}${addSel}</div></td>
-        <td>${s.cnt}</td><td><b>${f0(s.flow)}</b></td><td>${SEG_NAME[s.type]}</td>
+      h+=`<tr class="${s.type==='main'?'seg-main':''}"><td>${lab}</td><td class="l"><div class="chips">${chips}${addSel}</div></td>
+        <td><b>${f0(s.flow)}</b></td><td>${SEG_NAME[s.type]}</td>
         <td><input class="ti s${row.vO?' ov':''}" type="number" step="0.1" value="${f1(s.V)}" onchange="rowSet('${z.id}','${row.id}','vO',this.value)"></td>
-        <td class="cv">${f3(s.A)}</td>
         ${round?`<td><input class="ti s${row.dO?' ov':''}" type="number" step="25" value="${s.d}" onchange="rowSet('${z.id}','${row.id}','dO',this.value)"></td>`
           :`<td><input class="ti s${row.wO?' ov':''}" type="number" step="50" value="${s.w}" onchange="rowSet('${z.id}','${row.id}','wO',this.value)"></td>
             <td><input class="ti s${row.hO?' ov':''}" type="number" step="50" value="${s.h}" onchange="rowSet('${z.id}','${row.id}','hO',this.value)"></td>`}
-        <td>${f2(s.vAct)}</td>${round?'':`<td>${f2(s.ar)}</td>`}<td class="cv">${s.plate}</td>
-        <td class="cv">${f0(s.outW)} × ${f0(s.outH)}</td><td>${f0(s.totW)} × <b>${f0(s.totH)}</b></td>
-        <td style="white-space:nowrap">${chk}</td><td style="white-space:nowrap">${ctl}</td></tr>`;
+        <td>${f2(s.vAct)}</td><td style="white-space:nowrap">${chk}</td><td style="white-space:nowrap">${ctl}</td></tr>`;
     });
-    if(!z.rows.length) h+=`<tr><td colspan="16" class="cv">「+ 줄」로 시작하세요</td></tr>`;
+    if(!z.rows.length) h+=`<tr><td colspan="10" class="cv">「+ 줄」로 시작하세요</td></tr>`;
     h+=`</tbody></table></div></div>`;
   }
-  h+=`<p class="note">한 줄의 덕트 = 그 줄까지 합류한 기구 전체를 싣고 다음 줄(팬 쪽)으로 가는 구간. 구간 판정 — 기구 1개 = 말단 · 한 실 2개 이상 = 분기 · 두 실 이상 = 메인. 풍속은 그 구간이 담당하는 실 중 가장 낮은 값. 상류 덕트는 하류보다 작아지지 않게 맞춤. 필요 공간 = 보온 바깥 + 각 면 여유 (높이가 천장 속 높이를 넘으면 「천장 속 초과」).</p>`;
+  h=`<div class="zl"><div class="zl-l">${h}</div><div class="zl-r"><div class="diag-h"><b>덕트 계통도</b><span class="card-s">왼쪽 말단 → 오른쪽 팬 · 선 굵기 = 덕트 크기</span></div>${diagramSVG()}</div></div>`;
+  h+=`<p class="note">한 줄의 덕트 = 그 줄까지 합류한 기구 전체를 싣고 다음 줄(팬 쪽)으로 가는 구간. 1번 줄 = 그 ZONE 의 제일 끝. 구간 판정 — 기구 1개 = 말단 · 한 실 2개 이상 = 분기 · 두 실 이상 = 메인. 풍속은 그 구간이 담당하는 실 중 가장 낮은 값. 상류 덕트는 하류보다 작아지지 않게 맞춤. 크기를 직접 바꾸면 팬 쪽 구간이 모두 다시 맞춰지고, 하류보다 작게 넣으면 「치수 역전」.</p>`;
+  h+=segTableHTML();
   $('zoneBox').innerHTML=h;
 }
-function rootZones(){ const used=usedSets(); return S.zones.filter(z=>!used.z.has(z.id)&&z.rows.some(r=>r.items.length)).map(z=>z.id); }
-function treeHTML(zid){
-  const res=calcZone(zid), z=zoneById(zid), om=outletMap(); if(!z) return '';
-  let h=`<li><span class="tz">${esc(z.name)}</span> <span class="ts">${f0(res.flow)} CMH</span><ul>`;
-  z.rows.forEach((row,ri)=>{
-    const s=res.segs[ri]; if(!s||s.empty) return;
-    const os=row.items.filter(i=>i.t==='o').map(i=>esc(itemLabel(i,om))).join(', ');
-    h+=`<li>${ri+1}. ${os?os+' ':''}<span class="ts">→ ${SEG_NAME[s.type]} ${f0(s.flow)} CMH · ${s.dim}</span>`;
-    const zs=row.items.filter(i=>i.t==='z'); if(zs.length) h+=`<ul>${zs.map(i=>treeHTML(i.id)).join('')}</ul>`;
-    h+=`</li>`;
-  });
-  return h+`</ul></li>`;
+const mm=v=>{ const r=Math.round(v*10)/10; return Number.isInteger(r)?f0(r):r.toFixed(1); };
+function segTableHTML(){
+  const round=S.shape==='round'; let rows='';
+  for(const z of zoneOrder()){ const res=calcZone(z.id);
+    res.segs.forEach((s,i)=>{ if(s.empty)return;
+      const dW=(round?s.d:s.w)+2*s.plate, dH=(round?s.d:s.h)+2*s.plate;
+      const chk=segChecks(s).map(c=>`<span class="badge ${c[0]}">${c[1]}</span>`).join(' ')||'<span class="badge b-ok">OK</span>';
+      rows+=`<tr class="${s.type==='main'?'seg-main':''}"><td class="l"><b>${esc(z.name)}</b></td><td>${i+1}</td><td>${SEG_NAME[s.type]}</td><td>${f0(s.flow)}</td>
+        <td><b>${s.dim}</b></td><td>${f2(s.vAct)}</td>${round?'':`<td>${f2(s.ar)}</td>`}<td>${s.plate}</td><td>${s.ins}</td>
+        <td>${mm(dW)}</td><td>${mm(s.outW)}</td><td><b>${mm(s.totW)}</b></td>
+        <td>${mm(dH)}</td><td>${mm(s.outH)}</td><td><b>${mm(s.totH)}</b></td><td>${s.ceil}</td><td style="white-space:nowrap">${chk}</td></tr>`; }); }
+  if(!rows) return '';
+  return `<div style="margin-top:16px"><b>구간별 덕트 치수 (도면용)</b><div class="tw" style="margin-top:6px"><table class="t"><thead>
+    <tr><th rowspan="2">ZONE</th><th rowspan="2">순서</th><th rowspan="2">구간</th><th rowspan="2">풍량<br>(CMH)</th><th rowspan="2">덕트<br>(안치수)</th><th rowspan="2">실제<br>(m/s)</th>${round?'':'<th rowspan="2">AR</th>'}<th rowspan="2">판두께</th><th rowspan="2">보온</th>
+      <th colspan="3">폭 (mm)</th><th colspan="3">높이 (mm)</th><th rowspan="2">천장 속</th><th rowspan="2">검토</th></tr>
+    <tr><th>덕트</th><th>+보온</th><th>+보온+바운더리</th><th>덕트</th><th>+보온</th><th>+보온+바운더리</th></tr></thead><tbody>${rows}</tbody></table></div>
+    <p class="note">덕트 = 안치수 + 판두께 × 2 · +보온 = 보온 두께 × 2 추가 · +바운더리 = 각 면 여유 추가 (폭 = 좌 + 우, 높이 = 위 + 아래). 천장 속 판정은 높이 +보온+바운더리 기준.</p></div>`;
 }
+// ── 덕트 계통도 (SVG) — 왼쪽 말단 → 오른쪽 팬. 기구는 줄 위로, 합류 ZONE 은 아래로 붙는다
+function diagramSVG(){
+  const roots=rootZones(); if(!roots.length) return '<div class="empty">ZONE 을 구성하면 그림이 나타납니다.</div>';
+  const STEP=104, BAND=74, om=outletMap(), el=[], txt=[];
+  let maxA=0; for(const z of S.zones) for(const s of calcZone(z.id).segs) if(!s.empty) maxA=Math.max(maxA,s.area);
+  const sw=a=>2.5+9*Math.sqrt(a/(maxA||1)), col={main:'#1d4ed8',branch:'#0f766e',term:'#64748b'};
+  const kids=row=>row.items.filter(i=>i.t==='z').map(i=>i.id);
+  const ht=(zid,d=0)=>{ const z=zoneById(zid); if(!z||d>50) return BAND; let h=BAND; for(const r of z.rows) for(const k of kids(r)) h+=ht(k,d+1); return h; };
+  function lay(zid,xJ,y,d=0){
+    const z=zoneById(zid); if(!z||d>50) return; const res=calcZone(zid), n=z.rows.length; let cy=y+BAND;
+    const xs=z.rows.map((_,i)=>xJ-(n-i)*STEP);
+    z.rows.forEach((row,i)=>{ const s=res.segs[i], x0=xs[i], x1=i<n-1?xs[i+1]:xJ;
+      if(s&&!s.empty){
+        el.push(`<line x1="${x0}" y1="${y}" x2="${x1}" y2="${y}" stroke="${col[s.type]}" stroke-width="${sw(s.area).toFixed(1)}" stroke-linecap="round"/>`);
+        txt.push(`<text x="${(x0+x1)/2}" y="${y-9}" class="dt-s" text-anchor="middle">${s.dim}</text><text x="${(x0+x1)/2}" y="${y+16}" class="dt-f" text-anchor="middle">${f0(s.flow)}</text>`);
+      }
+      const os=row.items.filter(it=>it.t==='o').map(it=>itemLabel(it,om));
+      if(os.length){ el.push(`<line x1="${x0}" y1="${y}" x2="${x0}" y2="${y-26}" stroke="#94a3b8" stroke-width="1.5"/><rect x="${x0-9}" y="${y-33}" width="18" height="7" rx="1.5" fill="#fff" stroke="#475569" stroke-width="1.2"/>`);
+        txt.push(`<text x="${x0}" y="${y-38}" class="dt-o" text-anchor="middle">${esc(os.join(', '))}</text>`); }
+      for(const k of kids(row)){ el.push(`<line x1="${x0}" y1="${cy}" x2="${x0}" y2="${y}" stroke="#a78bfa" stroke-width="1.5" stroke-dasharray="4 3"/>`); lay(k,x0,cy,d+1); cy+=ht(k); }
+      el.push(`<circle cx="${x0}" cy="${y}" r="3" fill="#fff" stroke="#334155" stroke-width="1.2"/>`);
+    });
+    txt.push(`<text x="${(xs[0]??xJ)-10}" y="${y+4}" class="dt-z" text-anchor="end" style="cursor:pointer" onclick="document.getElementById('zc-${zid}').scrollIntoView({behavior:'smooth',block:'center'})">${esc(z.name)}</text>`);
+  }
+  const L=calcLouver(roots.length?calcZone(roots[0]).flow:0), ex=S.mode==='exhaust';
+  let y=60; for(const r of roots){
+    lay(r,0,y);
+    el.push(`<line x1="0" y1="${y}" x2="20" y2="${y}" stroke="#1d4ed8" stroke-width="3"/><rect x="20" y="${y-16}" width="56" height="32" rx="6" fill="#eff6ff" stroke="#1d4ed8"/><line x1="76" y1="${y}" x2="110" y2="${y}" stroke="#334155" stroke-width="3"/><rect x="110" y="${y-22}" width="14" height="44" fill="#f1f5f9" stroke="#334155"/>`);
+    txt.push(`<text x="48" y="${y+4}" class="dt-z" text-anchor="middle" style="fill:#1d4ed8">팬</text><text x="117" y="${y-28}" class="dt-s" text-anchor="middle">${ex?'배기':'외기'} 루버</text><text x="117" y="${y+36}" class="dt-f" text-anchor="middle">${L.w}×${L.h}</text>`);
+    y+=ht(r)+20; }
+  // 왼쪽 끝 계산 — 가장 긴 줄기의 시작점까지
+  let minX=0; const ext=(zid,xJ,d=0)=>{ const z=zoneById(zid); if(!z||d>50)return; const n=z.rows.length; minX=Math.min(minX,xJ-n*STEP-8*z.name.length-20);
+    z.rows.forEach((r,i)=>kids(r).forEach(k=>ext(k,xJ-(n-i)*STEP,d+1))); };
+  roots.forEach(r=>ext(r,0));
+  const W=-minX+150, H=y;
+  return `<svg class="diag" style="width:100%;max-width:${W}px;height:auto" viewBox="${minX} 0 ${W} ${H}" xmlns="http://www.w3.org/2000/svg">${el.join('')}${txt.join('')}</svg>`;
+}
+function rootZones(){ const used=usedSets(); return S.zones.filter(z=>!used.z.has(z.id)&&z.rows.some(r=>r.items.length)).map(z=>z.id); }
 function renderSummary(){
   const roots=rootZones(), om=outletMap(), used=usedSets(), warns=[];
   const totalRoom=S.rooms.reduce((s,r)=>s+(+r.flow||0),0);
@@ -415,7 +497,9 @@ function renderSummary(){
   if(roots.length>1) warns.push(['wi-red',`팬에 연결된 ZONE 이 ${roots.length}개입니다 (${roots.map(id=>esc(zoneById(id).name)).join(', ')}). 한 계통 = 팬 1대이면 MAIN ZONE 하나로 합류시키세요.`]);
   for(const r of S.rooms){ const c=calcTerm(r); if(!c.ok) warns.push(['wi-red',`${esc(r.name)} — 선정 ${KIND_NAME[c.kind]} 크기에서 유효풍속 ${f2(c.vAct)} m/s 가 기준 ${f1(c.V)} 을 넘습니다.`]); }
   for(const z of S.zones){ const res=calcZone(z.id); res.segs.forEach((s,i)=>{ if(s.empty)return;
-    if(s.totH>S.ceil) warns.push(['wi-red',`${esc(z.name)} ${i+1}번 구간 ${s.dim} — 필요 높이 ${f0(s.totH)} mm 가 천장 속 ${S.ceil} mm 를 넘습니다. 높이를 낮추고 폭을 넓히거나 분할 검토.`]);
+    if(s.totH>s.ceil) warns.push(['wi-red',`${esc(z.name)} ${i+1}번 구간 ${s.dim} — 필요 높이 ${f0(s.totH)} mm 가 천장 속 ${s.ceil} mm 를 넘습니다. 높이를 낮추고 폭을 넓히거나 분할 검토.`]);
+    if(s.rev) warns.push(['wi-red',`${esc(z.name)} ${i+1}번 구간 ${s.dim} — 직접 입력한 치수가 하류(앞 줄·합류 ZONE)보다 작습니다 (치수 역전).`]);
+    if(s.mountBad) warns.push(['wi-red',`${esc(z.name)} ${i+1}번 구간 ${s.dim} — 직접 입력한 치수로는 이 줄의 기구를 덕트에 직접 붙일 수 없습니다 (${{bottom:'폭 ≥ 기구 단변 + 100',side:'높이 ≥ 기구 높이 + 100'}[S.mount]||'지름 ≥ 기구'}).`]);
     if(s.ar>4+1e-9) warns.push(['wi-warn',`${esc(z.name)} ${i+1}번 구간 ${s.dim} — 아스펙트비 ${f2(s.ar)} (4 초과). 풍속 상향·경로 변경·분할 검토.`]);
     if(s.area>=0.6) warns.push(['wi-warn',`${esc(z.name)} ${i+1}번 구간 ${s.dim} — 단면적 ${f2(s.area)} m² ≥ 0.6, 내진 대상 (AC-079).`]); }); }
   const root=roots.length?calcZone(roots[0]):null;
@@ -454,9 +538,8 @@ function renderSummary(){
       <div class="row"><span>덕트 높이 상한 (소형 기준)</span><span>${hMax()} mm</span></div>
       <p class="note">높이 상한 = 설치 가능 높이 − 위 45 − 아래 55 − 보온 × 2 − 판두께 × 2. 최종 판정은 구간별 필요 공간으로.</p></div>
   </div>`;
-  const tree=roots.length?`<div class="tree" style="margin-top:14px"><b>계통도</b><ul>${roots.map(id=>`<li><span class="badge b-info">팬</span> ← ${treeHTML(id).replace(/^<li>|<\/li>$/g,'')}</li>`).join('')}</ul></div>`:'';
-  const wl=warns.length?warns.map(w=>`<div class="warn-item ${w[0]}">${w[1]}</div>`).join(''):'<div class="warn-item wi-ok">검토사항 없음</div>';
-  $('sumBox').innerHTML=sq+tree+`<div style="margin-top:14px"><b>검토사항</b><div class="warn-list" style="margin-top:6px">${wl}</div></div>`;
+    const wl=warns.length?warns.map(w=>`<div class="warn-item ${w[0]}">${w[1]}</div>`).join(''):'<div class="warn-item wi-ok">검토사항 없음</div>';
+  $('sumBox').innerHTML=sq+`<div style="margin-top:14px"><b>검토사항</b><div class="warn-list" style="margin-top:6px">${wl}</div></div>`;
 }
 function renderRef(){
   if($('refBox').dataset.done) return; $('refBox').dataset.done=1;
@@ -483,6 +566,7 @@ function renderRef(){
 function setSys(k,v){
   if(['ceil','regOpen','grilleOpen','louverOpen'].includes(k)){ const x=num(v); if(x==null||x<=0) return render(); S[k]=x; }
   else S[k]=v;
+  if(S.shape==='round'&&S.mount==='side') S.mount='bottom';
   render();
 }
 function roomAdd(){ const n=S.rooms.length; S.rooms.push({id:uid('r'),name:String.fromCharCode(65+(n%26))+(n>=26?n:''),usage:S.rooms[n-1]?.usage||'off',flow:500,count:2,vO:null,wO:null,hO:null,dO:null}); render(); }
@@ -499,7 +583,7 @@ const Z=id=>zoneById(id), R=(z,rid)=>z&&z.rows.find(r=>r.id===rid);
 function newRow(items=[]){ return {id:uid('w'),items,vO:null,wO:null,hO:null,dO:null}; }
 function zoneAdd(){ S.zones.push({id:uid('z'),name:'ZONE-'+(S.zones.length+1),rows:[newRow()]}); render(); }
 function zoneDel(id){ const z=Z(id); if(!z||!confirm(`「${z.name}」을 삭제할까요?`))return; S.zones=S.zones.filter(x=>x.id!==id); render(); }
-function zoneSet(id,k,v){ const z=Z(id); if(z){ z[k]=v; render(); } }
+function zoneSet(id,k,v){ const z=Z(id); if(!z)return; if(k==='ceil'){ const x=num(v); z.ceil=(x==null||x<=0||x===S.ceil)?null:x; } else z[k]=v; render(); }
 function rowAdd(zid){ const z=Z(zid); if(z){ z.rows.push(newRow()); render(); } }
 function rowDel(zid,rid){ const z=Z(zid); if(z){ z.rows=z.rows.filter(r=>r.id!==rid); render(); } }
 function rowMove(zid,rid,d){ const z=Z(zid); if(!z)return; const i=z.rows.findIndex(r=>r.id===rid), j=i+d; if(i<0||j<0||j>=z.rows.length)return; [z.rows[i],z.rows[j]]=[z.rows[j],z.rows[i]]; render(); }
