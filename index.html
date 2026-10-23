@@ -1,994 +1,730 @@
 <!DOCTYPE html>
 <html lang="ko">
 <head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>환기 덕트 관경 계산서</title>
-  <style>
-    :root {
-      --color-background-page:      #f0f2f5;
-      --color-background-primary:   #ffffff;
-      --color-background-secondary: #f8f9fa;
-      --color-background-success:   #d1fae5;
-      --color-background-danger:    #fee2e2;
-      --color-background-warning:   #fef3c7;
-      --color-border-primary:       #e5e7eb;
-      --color-border-tertiary:      #d1d5db;
-      --color-text-primary:         #111827;
-      --color-text-secondary:       #6b7280;
-      --color-text-info:            #2563eb;
-      --color-text-success:         #059669;
-      --color-text-danger:          #dc2626;
-      --color-text-warning:         #d97706;
-      --color-accent:               #1d4ed8;
-      --color-accent-light:         #eff6ff;
-      --border-radius-sm: 4px;
-      --border-radius-md: 8px;
-      --border-radius-lg: 12px;
-      --shadow-sm: 0 1px 3px rgba(0,0,0,0.08);
-    }
-    * { box-sizing: border-box; margin: 0; padding: 0; }
-    body {
-      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Noto Sans KR', sans-serif;
-      background: var(--color-background-page);
-      color: var(--color-text-primary);
-      font-size: 14px;
-      line-height: 1.5;
-    }
-
-    /* ── Header ── */
-    .app-header {
-      background: var(--color-accent);
-      color: white;
-      padding: 0 24px;
-      box-shadow: 0 2px 8px rgba(0,0,0,0.18);
-      position: sticky; top: 0; z-index: 100;
-    }
-    .header-top { display:flex; align-items:center; gap:14px; padding:11px 0; flex-wrap:wrap; }
-    .app-title { font-size:17px; font-weight:700; white-space:nowrap; letter-spacing:-0.3px; margin-right:4px; }
-    .header-controls { display:flex; align-items:center; gap:8px; flex-wrap:wrap; flex:1; }
-    .header-select, .header-input {
-      height:33px; padding:0 10px;
-      border:1px solid rgba(255,255,255,0.3);
-      border-radius:var(--border-radius-sm);
-      background:rgba(255,255,255,0.15); color:white; font-size:13px; outline:none;
-      transition:background .15s;
-    }
-    .header-select:focus, .header-input:focus { background:rgba(255,255,255,0.25); border-color:rgba(255,255,255,0.6); }
-    .header-select option { color:var(--color-text-primary); background:white; }
-    .header-input::placeholder { color:rgba(255,255,255,0.55); }
-    .header-input { width:175px; }
-    .header-btn-group { display:flex; gap:6px; margin-left:auto; }
-    .btn {
-      display:inline-flex; align-items:center; gap:5px; height:33px; padding:0 13px;
-      border:1px solid rgba(255,255,255,0.4); border-radius:var(--border-radius-sm);
-      background:rgba(255,255,255,0.15); color:white; font-size:13px; font-weight:500;
-      cursor:pointer; white-space:nowrap; transition:background .15s, border-color .15s;
-    }
-    .btn:hover { background:rgba(255,255,255,0.28); border-color:rgba(255,255,255,0.7); }
-
-    /* ── Layout ── */
-    .main-content { max-width:1400px; margin:0 auto; padding:22px 22px 60px; }
-
-    /* ── Card ── */
-    .card {
-      background:var(--color-background-primary);
-      border:1px solid var(--color-border-primary);
-      border-radius:var(--border-radius-lg);
-      box-shadow:var(--shadow-sm); margin-bottom:16px;
-    }
-    .card-header { display:flex; align-items:center; gap:8px; padding:13px 20px; border-bottom:1px solid var(--color-border-primary); }
-    .card-title { font-size:14px; font-weight:600; }
-    .card-badge { font-size:11px; padding:2px 8px; border-radius:20px; background:var(--color-accent-light); color:var(--color-accent); font-weight:500; }
-    .card-body { padding:20px; }
-
-    /* ── Settings grid ── */
-    .settings-grid { display:grid; grid-template-columns:repeat(auto-fit,minmax(185px,1fr)); gap:16px; }
-    .field-group { display:flex; flex-direction:column; gap:5px; }
-    .field-label { font-size:12px; font-weight:500; color:var(--color-text-secondary); }
-    .field-unit  { font-size:11px; color:var(--color-text-secondary); margin-left:2px; }
-    .field-input {
-      height:38px; padding:0 12px;
-      border:1px solid var(--color-border-tertiary); border-radius:var(--border-radius-md);
-      font-size:14px; color:var(--color-text-primary); background:white; outline:none;
-      transition:border-color .15s, box-shadow .15s;
-    }
-    .field-input:focus { border-color:var(--color-accent); box-shadow:0 0 0 3px rgba(29,78,216,0.1); }
-    .field-input.auto-calc { background:var(--color-accent-light); color:var(--color-accent); font-weight:600; border-color:#bfdbfe; cursor:default; }
-    input[type=number] { -moz-appearance:textfield; }
-    input[type=number]::-webkit-outer-spin-button,
-    input[type=number]::-webkit-inner-spin-button { -webkit-appearance:none; }
-
-    /* ── Tabs ── */
-    .tab-list {
-      display:flex; border-bottom:2px solid var(--color-border-primary);
-      background:var(--color-background-primary);
-      border-radius:var(--border-radius-lg) var(--border-radius-lg) 0 0; padding:0 6px;
-    }
-    .tab-item {
-      display:flex; align-items:center; gap:6px; padding:13px 22px;
-      font-size:14px; font-weight:500; color:var(--color-text-secondary);
-      cursor:pointer; border-bottom:2px solid transparent; margin-bottom:-2px;
-      transition:color .15s; user-select:none;
-    }
-    .tab-item:hover:not(.disabled) { color:var(--color-accent); }
-    .tab-item.active { color:var(--color-accent); border-bottom-color:var(--color-accent); font-weight:600; }
-    .tab-item.disabled { color:var(--color-border-tertiary); cursor:not-allowed; }
-    .tab-icon { font-size:15px; }
-    .tab-panel { display:none; }
-    .tab-panel.active { display:block; }
-
-    /* ── Info row (velocity settings) ── */
-    .info-row {
-      display:flex; gap:12px; flex-wrap:wrap; align-items:center;
-      padding:10px 14px;
-      background:var(--color-background-secondary);
-      border:1px solid var(--color-border-primary);
-      border-radius:var(--border-radius-md); margin-bottom:16px;
-    }
-    .info-item { display:flex; align-items:center; gap:5px; }
-    .info-label { font-size:11px; color:var(--color-text-secondary); white-space:nowrap; }
-    .info-unit  { font-size:11px; color:var(--color-text-secondary); }
-    .info-sep   { width:1px; height:20px; background:var(--color-border-tertiary); margin:0 4px; }
-
-    /* ── Editable info input ── */
-    .info-input {
-      width:50px; height:26px; padding:0 5px;
-      border:1px solid var(--color-border-tertiary); border-radius:var(--border-radius-sm);
-      font-size:12px; font-weight:600; text-align:center;
-      color:var(--color-text-primary); background:white; outline:none;
-      transition:border-color .15s, box-shadow .15s;
-    }
-    .info-input:focus { border-color:var(--color-accent); box-shadow:0 0 0 2px rgba(29,78,216,0.1); }
-    .info-input.user-override { color:var(--color-text-info); border-color:#93c5fd; }
-
-    /* ── Calc cards ── */
-    .calc-cards { display:grid; grid-template-columns:repeat(auto-fit,minmax(150px,1fr)); gap:10px; margin-bottom:18px; }
-    .calc-card { background:var(--color-background-secondary); border:1px solid var(--color-border-primary); border-radius:var(--border-radius-md); padding:13px 15px; }
-    .calc-card-label { font-size:11px; color:var(--color-text-secondary); font-weight:500; margin-bottom:5px; }
-    .calc-card-value { font-size:19px; font-weight:700; color:var(--color-text-primary); }
-    .calc-card-unit  { font-size:12px; color:var(--color-text-secondary); font-weight:400; margin-left:2px; }
-
-    /* ── Selection table (register/diffuser) ── */
-    .sel-table-wrap { overflow-x:auto; }
-    .selection-table { width:100%; border-collapse:collapse; font-size:13px; }
-    .selection-table th {
-      background:var(--color-background-secondary); color:var(--color-text-secondary);
-      font-weight:500; font-size:12px; padding:9px 14px; text-align:center;
-      border:1px solid var(--color-border-primary); white-space:nowrap;
-    }
-    .selection-table td { padding:8px 14px; border:1px solid var(--color-border-primary); text-align:center; }
-    .selection-table td.calc-val { background:var(--color-background-secondary); color:var(--color-text-secondary); }
-    .selection-table td.label-col { font-weight:500; color:var(--color-text-primary); background:var(--color-background-secondary); text-align:left; white-space:nowrap; }
-    .select-input {
-      width:72px; height:32px; padding:0 8px;
-      border:1px solid var(--color-border-tertiary); border-radius:var(--border-radius-sm);
-      font-size:13px; text-align:center; outline:none;
-      transition:border-color .15s, box-shadow .15s;
-    }
-    .select-input:focus { border-color:var(--color-accent); box-shadow:0 0 0 2px rgba(29,78,216,0.1); }
-    .select-input.user-override { color:var(--color-text-info); font-weight:600; border-color:#93c5fd; }
-
-    /* ── Badges ── */
-    .badge { display:inline-flex; align-items:center; padding:2px 9px; border-radius:20px; font-size:11px; font-weight:600; }
-    .badge-ok      { background:var(--color-background-success); color:var(--color-text-success); }
-    .badge-danger  { background:var(--color-background-danger);  color:var(--color-text-danger); }
-    .badge-warning { background:var(--color-background-warning); color:var(--color-text-warning); }
-
-    /* ── Area compare ── */
-    .area-compare {
-      margin-top:14px; padding:11px 15px; border-radius:var(--border-radius-md);
-      border:1px solid var(--color-border-primary);
-      display:flex; align-items:center; gap:10px; font-size:13px;
-    }
-    .area-compare.ok { background:var(--color-background-success); border-color:#6ee7b7; }
-    .area-compare.ng { background:var(--color-background-danger);  border-color:#fca5a5; }
-
-    /* ── Section heading ── */
-    .section-heading {
-      font-size:11px; font-weight:600; color:var(--color-text-secondary);
-      text-transform:uppercase; letter-spacing:0.7px;
-      margin-bottom:12px; padding-bottom:8px; border-bottom:1px solid var(--color-border-primary);
-    }
-    .divider { border:none; border-top:1px solid var(--color-border-primary); margin:22px 0; }
-
-    /* ── Duct branch table ── */
-    .duct-table-wrap { overflow-x:auto; }
-    .duct-table { width:100%; border-collapse:collapse; font-size:12px; white-space:nowrap; }
-    .duct-table th {
-      background:var(--color-background-secondary); color:var(--color-text-secondary);
-      font-weight:500; font-size:11px; padding:7px 10px; text-align:center;
-      border:1px solid var(--color-border-primary); line-height:1.4;
-    }
-    .duct-table td { padding:6px 10px; border:1px solid var(--color-border-primary); text-align:center; vertical-align:middle; }
-    .duct-table td.seg-label { font-weight:600; text-align:left; background:var(--color-background-secondary); color:var(--color-text-primary); min-width:88px; }
-    .duct-table td.cv { background:var(--color-background-secondary); color:var(--color-text-secondary); }
-    .duct-table tr.row-main td           { background:#f0f4ff; }
-    .duct-table tr.row-main td.cv        { background:#e6ecfa; color:var(--color-text-secondary); }
-    .duct-table tr.row-main td.seg-label { background:#e6ecfa; color:var(--color-accent); }
-    .duct-input {
-      width:66px; height:28px; padding:0 5px;
-      border:1px solid var(--color-border-tertiary); border-radius:var(--border-radius-sm);
-      font-size:12px; text-align:center; outline:none;
-      transition:border-color .15s, box-shadow .15s;
-    }
-    .duct-input:focus { border-color:var(--color-accent); box-shadow:0 0 0 2px rgba(29,78,216,0.1); }
-    .duct-input.user-override { color:var(--color-text-info); font-weight:600; border-color:#93c5fd; }
-    .auto-up-tag { font-size:10px; color:var(--color-text-warning); font-weight:700; margin-left:2px; }
-    .warn-duct { display:block; font-size:10px; color:var(--color-text-warning); font-weight:600; margin-top:2px; white-space:nowrap; }
-    .warn-duct.danger { color:var(--color-text-danger); }
-
-    /* ── Print ── */
-    @media print {
-      .app-header { display:none; }
-      .tab-list   { display:none; }
-      .card { box-shadow:none; }
-      .tab-panel { display:block !important; }
-    }
-    .field-hint { font-size:11px; color:var(--color-text-secondary); margin-top:2px; line-height:1.4; }
-    .field-warn { font-size:11px; font-weight:600; margin-top:4px; display:block; }
-    .field-warn.warning { color:var(--color-text-warning); }
-    .field-warn.danger  { color:var(--color-text-danger); }
-
-    @media (max-width:700px) {
-      .main-content { padding:14px; }
-      .settings-grid { grid-template-columns:1fr 1fr; }
-      .calc-cards { grid-template-columns:1fr 1fr; }
-      .header-input { width:130px; }
-    }
-  </style>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>환기 덕트 관경 계산서</title>
+<style>
+:root{
+  --bg:#f0f2f5;--surface:#fff;--surface2:#f8f9fa;--surface3:#eef1f5;
+  --border:#e5e7eb;--border2:#d1d5db;--text:#111827;--text2:#6b7280;
+  --accent:#1d4ed8;--accent-l:#eff6ff;--ok:#059669;--ok-bg:#d1fae5;
+  --warn:#b45309;--warn-bg:#fef3c7;--red:#dc2626;--red-bg:#fee2e2;--info:#2563eb;
+}
+*{box-sizing:border-box;margin:0;padding:0}
+body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI','Noto Sans KR',sans-serif;background:var(--bg);color:var(--text);font-size:13px;line-height:1.5}
+.hdr{background:var(--accent);color:#fff;padding:10px 22px;position:sticky;top:0;z-index:50;display:flex;gap:10px;align-items:center;flex-wrap:wrap;box-shadow:0 2px 8px rgba(0,0,0,.18)}
+.hdr h1{font-size:17px;font-weight:700;margin-right:6px;white-space:nowrap}
+.hdr input{height:32px;padding:0 10px;border:1px solid rgba(255,255,255,.35);border-radius:4px;background:rgba(255,255,255,.15);color:#fff;font-size:13px;width:180px;outline:none}
+.hdr input::placeholder{color:rgba(255,255,255,.6)}
+.hdr .sp{flex:1}
+.hbtn{height:32px;padding:0 12px;border:1px solid rgba(255,255,255,.4);border-radius:4px;background:rgba(255,255,255,.15);color:#fff;font-size:13px;cursor:pointer;white-space:nowrap}
+.hbtn:hover{background:rgba(255,255,255,.28)}
+.wrap{max-width:1500px;margin:0 auto;padding:18px 18px 60px}
+.card{background:var(--surface);border:1px solid var(--border);border-radius:12px;margin-bottom:14px;box-shadow:0 1px 3px rgba(0,0,0,.06)}
+.card-h{display:flex;align-items:center;gap:8px;padding:11px 18px;border-bottom:1px solid var(--border);flex-wrap:wrap}
+.card-t{font-size:14px;font-weight:700}
+.card-s{font-size:11px;color:var(--text2)}
+.card-b{padding:16px 18px}
+.badge{display:inline-block;padding:1px 8px;border-radius:20px;font-size:11px;font-weight:600;white-space:nowrap}
+.b-ok{background:var(--ok-bg);color:var(--ok)}.b-warn{background:var(--warn-bg);color:var(--warn)}.b-red{background:var(--red-bg);color:var(--red)}.b-info{background:var(--accent-l);color:var(--accent)}
+.grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(190px,1fr));gap:12px 16px}
+.fg{display:flex;flex-direction:column;gap:4px}
+.fl{font-size:11px;font-weight:600;color:var(--text2)}
+.fi,.fs{height:34px;padding:0 10px;border:1px solid var(--border2);border-radius:6px;font-size:13px;background:#fff;color:var(--text);outline:none}
+.fi:focus,.fs:focus{border-color:var(--accent);box-shadow:0 0 0 3px rgba(29,78,216,.1)}
+.fh{font-size:11px;color:var(--text2)}
+.chk{display:flex;align-items:center;gap:6px;font-size:12px;height:34px;cursor:pointer}
+.btn{height:30px;padding:0 12px;border:1px solid var(--border2);border-radius:6px;background:#fff;font-size:12px;cursor:pointer;white-space:nowrap}
+.btn:hover{border-color:var(--accent);color:var(--accent)}
+.btn-p{background:var(--accent);color:#fff;border-color:var(--accent)}
+.btn-p:hover{background:#1e40af;color:#fff}
+.btn-x{height:24px;width:20px;padding:0;border:none;background:none;color:var(--text2);cursor:pointer;font-size:14px}
+.btn-x:hover{color:var(--red)}
+.tw{overflow-x:auto}
+table.t{width:100%;border-collapse:collapse;font-size:12px;white-space:nowrap}
+table.t th{background:var(--surface2);color:var(--text2);font-weight:600;font-size:11px;padding:6px 8px;border:1px solid var(--border);text-align:center;line-height:1.35}
+table.t td{padding:5px 8px;border:1px solid var(--border);text-align:center;vertical-align:middle}
+table.t td.l{text-align:left}
+table.t td.cv{background:var(--surface2);color:var(--text2)}
+table.t tr.seg-main td{background:#f0f4ff}
+.ti{height:28px;padding:0 6px;border:1px solid var(--border2);border-radius:4px;font-size:12px;text-align:center;outline:none;background:#fff}
+.ti:focus{border-color:var(--accent)}
+.ti.ov{color:var(--info);font-weight:700;border-color:#93c5fd}
+.ti.n{width:64px}.ti.s{width:52px}.ti.w{width:110px;text-align:left}
+.zone{border:1px solid var(--border);border-radius:10px;margin-bottom:14px;overflow:hidden}
+.zone-h{display:flex;align-items:center;gap:8px;padding:8px 12px;background:var(--surface3);border-bottom:1px solid var(--border);flex-wrap:wrap}
+.zone-h .zn{font-weight:700;font-size:13px;width:150px}
+.zone-root{border-color:var(--accent)}
+.chips{display:flex;flex-wrap:wrap;gap:4px;align-items:center;min-width:140px}
+.chip{display:inline-flex;align-items:center;gap:3px;padding:1px 4px 1px 8px;border-radius:12px;font-size:11px;font-weight:600;background:var(--accent-l);color:var(--accent);border:1px solid #bfdbfe}
+.chip.z{background:#f5f3ff;color:#6d28d9;border-color:#ddd6fe}
+.chip button{border:none;background:none;color:inherit;cursor:pointer;font-size:12px;line-height:1;padding:0 2px;opacity:.6}
+.chip button:hover{opacity:1}
+.add-sel{height:24px;font-size:11px;border:1px dashed var(--border2);border-radius:12px;padding:0 6px;background:#fff;color:var(--text2);max-width:130px}
+.warn-list{display:flex;flex-direction:column;gap:5px}
+.warn-item{padding:7px 12px;border-radius:6px;font-size:12px}
+.wi-red{background:var(--red-bg);color:var(--red)}.wi-warn{background:var(--warn-bg);color:var(--warn)}.wi-ok{background:var(--ok-bg);color:var(--ok)}
+.sum{display:grid;grid-template-columns:repeat(auto-fit,minmax(260px,1fr));gap:12px}
+.sbox{background:var(--surface2);border:1px solid var(--border);border-radius:8px;padding:12px 14px}
+.sbox h4{font-size:12px;color:var(--text2);margin-bottom:6px}
+.sbox .big{font-size:18px;font-weight:700}
+.sbox .row{display:flex;justify-content:space-between;gap:10px;font-size:12px;padding:2px 0}
+.sbox .row span:first-child{color:var(--text2)}
+.tree ul{list-style:none;padding-left:18px;border-left:1px dashed var(--border2);margin-left:6px}
+.tree>ul{padding-left:0;border:none;margin:0}
+.tree li{padding:2px 0}
+.tree .tz{font-weight:700;color:#6d28d9}
+.tree .ts{color:var(--text2)}
+details.ref summary{cursor:pointer;font-weight:700;padding:12px 18px;font-size:14px}
+details.ref .card-b{border-top:1px solid var(--border)}
+.ref h4{font-size:12px;margin:12px 0 6px}
+.ref p,.ref li{font-size:12px;color:var(--text2)}
+.ref ul{padding-left:18px}
+.note{font-size:11px;color:var(--text2);margin-top:8px}
+.empty{padding:20px;text-align:center;color:var(--text2)}
+.zl{display:grid;grid-template-columns:minmax(0,.9fr) minmax(0,1.1fr);gap:14px;align-items:start}
+.zl-p{position:sticky;top:64px;border:1px solid var(--border);border-radius:10px;background:#fbfcfe;height:calc(100vh - 84px);overflow:auto;padding:10px 12px}
+.diag-h{display:flex;gap:8px;align-items:baseline;flex-wrap:wrap;margin-bottom:6px}
+svg.diag{display:block;font-family:inherit}
+.dt-s{font-size:10.5px;fill:#111827;font-weight:600}.dt-f{font-size:10px;fill:#6b7280}.dt-o{font-size:10px;fill:#1d4ed8;font-weight:600}.dt-z{font-size:12px;fill:#6d28d9;font-weight:700}
+@media (max-width:1100px){.zl{grid-template-columns:1fr}.zl-p{position:static;height:auto;max-height:none}}
+.dlg-bg{position:fixed;inset:0;background:rgba(15,23,42,.4);z-index:200;display:flex;align-items:center;justify-content:center}
+.dlg{background:#fff;border-radius:12px;padding:20px 22px;min-width:300px;max-width:90vw;box-shadow:0 10px 30px rgba(0,0,0,.2);font-size:14px}
+.dlg-b{display:flex;gap:8px;justify-content:flex-end;margin-top:16px}
+.toast{position:fixed;bottom:24px;left:50%;transform:translateX(-50%);background:#111827;color:#fff;padding:10px 18px;border-radius:8px;z-index:210;font-size:13px}
+.add-br{height:24px;font-size:11px;border:1px dashed #c4b5fd;border-radius:12px;padding:0 8px;background:#faf5ff;color:#6d28d9;cursor:pointer}
+.add-br:hover{background:#ede9fe}
+.zpath{font-size:11px;color:#6d28d9}
+@media print{.zl{grid-template-columns:1fr}.zl-p{position:static;height:auto;max-height:none}.hdr,.btn,.btn-x,.add-sel,.no-print{display:none!important}body{background:#fff}.card{box-shadow:none;break-inside:avoid}details.ref{display:none}}
+@media (max-width:700px){.wrap{padding:12px}.hdr input{width:120px}}
+</style>
 </head>
 <body>
 
-<!-- ════ HEADER ════ -->
-<header class="app-header">
-  <div class="header-top">
-    <span class="app-title">환기 덕트 관경 계산서</span>
-    <div class="header-controls">
-      <select class="header-select" id="deviceType" onchange="onDeviceChange()">
-        <option value="inline">인라인덕트팬</option>
-        <option value="hrv">전열교환기</option>
-        <option value="ceiling">천정형팬</option>
-      </select>
-      <select class="header-select" id="usageType" onchange="onUsageChange()">
-        <option value="residential">주거/병원/호텔</option>
-        <option value="office">사무실/학교</option>
-        <option value="commercial">상업/판매시설</option>
-        <option value="industrial">공장/주차장</option>
-      </select>
-      <input type="text" class="header-input" id="projectName" placeholder="프로젝트명">
-      <div class="header-btn-group">
-        <button class="btn" onclick="saveJSON()">💾 저장</button>
-        <button class="btn" onclick="$('loadFile').click()">📂 불러오기</button>
-        <input type="file" id="loadFile" accept=".json" style="display:none" onchange="loadJSON(event)">
-        <button class="btn" onclick="window.print()">🖨 PDF</button>
-      </div>
-    </div>
-  </div>
+<header class="hdr">
+  <h1>환기 덕트 관경 계산서</h1>
+  <input id="projectName" placeholder="프로젝트명" onchange="S.project=this.value;save()">
+  <span class="sp"></span>
+  <button class="hbtn" onclick="loadSample()">예시</button>
+  <button class="hbtn" onclick="resetAll()">새로 시작</button>
+  <button class="hbtn" onclick="saveJSON()">💾 저장</button>
+  <button class="hbtn" onclick="$('loadFile').click()">📂 불러오기</button>
+  <input type="file" id="loadFile" accept=".json" style="display:none" onchange="loadJSON(event)">
+  <button class="hbtn" onclick="window.print()">🖨 PDF</button>
 </header>
 
-<!-- ════ MAIN ════ -->
-<div class="main-content">
-
-  <!-- 기본 설정 -->
-  <div class="card">
-    <div class="card-header">
-      <span class="card-title">기본 설정</span>
-      <span class="card-badge">공통</span>
-    </div>
-    <div class="card-body">
-      <div class="settings-grid">
-        <div class="field-group">
-          <label class="field-label">실별 계산풍량 <span class="field-unit">(CMH)</span></label>
-          <input type="number" class="field-input" id="totalFlow" placeholder="1000" min="0" onchange="onBasicChange()">
-        </div>
-        <div class="field-group">
-          <label class="field-label" id="countLabel">레지스터/디퓨져 개수</label>
-          <input type="number" class="field-input" id="unitCount" placeholder="4" min="1" onchange="onBasicChange()">
-        </div>
-        <div class="field-group">
-          <label class="field-label">덕트 설치 가능 높이 <span class="field-unit">(m)</span></label>
-          <input type="number" class="field-input" id="ceilHeight" placeholder="0.60" step="0.05" min="0.05" onchange="onBasicChange()">
-          <span class="field-hint">층고에서 슬라브/보/천장재 제외한 실제 덕트 공간</span>
-          <span id="ceil-warn" class="field-warn" style="display:none"></span>
-        </div>
-        <div class="field-group">
-          <label class="field-label">개당 풍량 <span class="field-unit">(CMH)</span></label>
-          <input type="text" class="field-input auto-calc" id="unitFlow" readonly placeholder="—" tabindex="-1">
-        </div>
-        <div class="field-group" id="exhaustFlowGroup" style="display:none">
-          <label class="field-label">배기 풍량 <span class="field-unit">(CMH)</span></label>
-          <input type="number" class="field-input" id="exhaustFlow" placeholder="—" min="0" onchange="render()">
-        </div>
-      </div>
-    </div>
-  </div>
-
-  <!-- 탭 -->
-  <div>
-    <div class="tab-list">
-      <div class="tab-item active" id="tab-sq" onclick="switchTab('sq')"><span class="tab-icon">⬜</span> 사각덕트</div>
-      <div class="tab-item"        id="tab-rd" onclick="switchTab('rd')"><span class="tab-icon">⭕</span> 원형덕트</div>
-    </div>
-
-    <!-- ══ 사각덕트 탭 ══ -->
-    <div class="tab-panel active card" id="panel-sq"
-         style="border-radius:0 0 var(--border-radius-lg) var(--border-radius-lg);border-top:none;">
-      <div class="card-body">
-
-        <div id="sq-register-section">
-          <p class="section-heading">풍속 설정 (사각) &amp; 레지스터 사이즈</p>
-
-          <!-- 풍속·개구율 수기 입력 -->
-          <div class="info-row">
-            <div class="info-item">
-              <span class="info-label">취출구</span>
-              <input type="number" class="info-input" id="sq-vel-outlet" step="0.1" min="0.1" onchange="onVelChange('sq','outlet')">
-              <span class="info-unit">m/s</span>
-            </div>
-            <div class="info-sep"></div>
-            <div class="info-item">
-              <span class="info-label">말단</span>
-              <input type="number" class="info-input" id="sq-vel-terminal" step="0.1" min="0.1" onchange="onVelChange('sq','terminal')">
-              <span class="info-unit">m/s</span>
-            </div>
-            <div class="info-item">
-              <span class="info-label">분기</span>
-              <input type="number" class="info-input" id="sq-vel-branch" step="0.1" min="0.1" onchange="onVelChange('sq','branch')">
-              <span class="info-unit">m/s</span>
-            </div>
-            <div class="info-item">
-              <span class="info-label">메인</span>
-              <input type="number" class="info-input" id="sq-vel-main" step="0.1" min="0.1" onchange="onVelChange('sq','main')">
-              <span class="info-unit">m/s</span>
-            </div>
-            <div class="info-sep"></div>
-            <div class="info-item">
-              <span class="info-label">개구율(레지스터)</span>
-              <input type="number" class="info-input" id="sq-open-rate" step="0.01" min="0.01" max="1" onchange="onOpenChange('sq')">
-            </div>
-          </div>
-
-          <div class="calc-cards">
-            <div class="calc-card">
-              <div class="calc-card-label">개당 풍량</div>
-              <div class="calc-card-value" id="sq-reg-flow">—<span class="calc-card-unit">CMH</span></div>
-            </div>
-            <div class="calc-card">
-              <div class="calc-card-label">유효면적</div>
-              <div class="calc-card-value" id="sq-eff-area">—<span class="calc-card-unit">m²</span></div>
-            </div>
-            <div class="calc-card">
-              <div class="calc-card-label">최소 설치면적</div>
-              <div class="calc-card-value" id="sq-min-area">—<span class="calc-card-unit">m²</span></div>
-            </div>
-          </div>
-
-          <div class="sel-table-wrap">
-            <table class="selection-table">
-              <thead>
-                <tr>
-                  <th style="text-align:left">항목</th>
-                  <th>계산값 (m)</th>
-                  <th>선정값 (m)</th>
-                </tr>
-              </thead>
-              <tbody>
-                <tr>
-                  <td class="label-col">장변</td>
-                  <td class="calc-val" id="sq-long-calc">—</td>
-                  <td><input type="number" class="select-input" id="sq-long-sel" step="0.05" min="0.05" placeholder="—" onchange="onRegLongChange()"></td>
-                </tr>
-                <tr>
-                  <td class="label-col">단변</td>
-                  <td class="calc-val" id="sq-short-calc">—</td>
-                  <td><input type="number" class="select-input" id="sq-short-sel" step="0.05" min="0.05" placeholder="—" onchange="onRegShortChange()"></td>
-                </tr>
-              </tbody>
-            </table>
-          </div>
-
-          <div class="area-compare ok" id="sq-area-compare" style="display:none"></div>
-        </div>
-
-        <hr class="divider">
-
-        <p class="section-heading">분기별 덕트 사이즈 (사각)</p>
-        <div id="sq-duct-table-wrap"></div>
-
-      </div>
-    </div>
-
-    <!-- ══ 원형덕트 탭 ══ -->
-    <div class="tab-panel card" id="panel-rd"
-         style="border-radius:0 0 var(--border-radius-lg) var(--border-radius-lg);border-top:none;">
-      <div class="card-body">
-
-        <div id="rd-diffuser-section">
-          <p class="section-heading">풍속 설정 (원형) &amp; 디퓨져 사이즈</p>
-
-          <div class="info-row">
-            <div class="info-item">
-              <span class="info-label">취출구</span>
-              <input type="number" class="info-input" id="rd-vel-outlet" step="0.1" min="0.1" onchange="onVelChange('rd','outlet')">
-              <span class="info-unit">m/s</span>
-            </div>
-            <div class="info-sep"></div>
-            <div class="info-item">
-              <span class="info-label">말단</span>
-              <input type="number" class="info-input" id="rd-vel-terminal" step="0.1" min="0.1" onchange="onVelChange('rd','terminal')">
-              <span class="info-unit">m/s</span>
-            </div>
-            <div class="info-item">
-              <span class="info-label">분기</span>
-              <input type="number" class="info-input" id="rd-vel-branch" step="0.1" min="0.1" onchange="onVelChange('rd','branch')">
-              <span class="info-unit">m/s</span>
-            </div>
-            <div class="info-item">
-              <span class="info-label">메인</span>
-              <input type="number" class="info-input" id="rd-vel-main" step="0.1" min="0.1" onchange="onVelChange('rd','main')">
-              <span class="info-unit">m/s</span>
-            </div>
-            <div class="info-sep"></div>
-            <div class="info-item">
-              <span class="info-label">개구율(디퓨져)</span>
-              <input type="number" class="info-input" id="rd-open-rate" step="0.01" min="0.01" max="1" onchange="onOpenChange('rd')">
-            </div>
-          </div>
-
-          <div class="calc-cards">
-            <div class="calc-card">
-              <div class="calc-card-label">개당 풍량</div>
-              <div class="calc-card-value" id="rd-diff-flow">—<span class="calc-card-unit">CMH</span></div>
-            </div>
-            <div class="calc-card">
-              <div class="calc-card-label">유효면적</div>
-              <div class="calc-card-value" id="rd-eff-area">—<span class="calc-card-unit">m²</span></div>
-            </div>
-            <div class="calc-card">
-              <div class="calc-card-label">최소 설치면적</div>
-              <div class="calc-card-value" id="rd-min-area">—<span class="calc-card-unit">m²</span></div>
-            </div>
-          </div>
-
-          <div class="sel-table-wrap">
-            <table class="selection-table">
-              <thead>
-                <tr>
-                  <th style="text-align:left">항목</th>
-                  <th>계산값 (m)</th>
-                  <th>선정값 (m)</th>
-                </tr>
-              </thead>
-              <tbody>
-                <tr>
-                  <td class="label-col">지름</td>
-                  <td class="calc-val" id="rd-diam-calc">—</td>
-                  <td><input type="number" class="select-input" id="rd-diam-sel" step="0.05" min="0.05" placeholder="—" onchange="onDiffDiamChange()"></td>
-                </tr>
-              </tbody>
-            </table>
-          </div>
-
-          <div class="area-compare ok" id="rd-area-compare" style="display:none"></div>
-        </div>
-
-        <hr class="divider">
-
-        <p class="section-heading">분기별 덕트 사이즈 (원형)</p>
-        <div id="rd-duct-table-wrap"></div>
-
-      </div>
-    </div>
-
-  </div><!-- /tabs -->
-</div><!-- /main-content -->
+<div id="dlg" class="dlg-bg" style="display:none"><div class="dlg"><div id="dlgMsg"></div><div class="dlg-b"><button class="btn" onclick="dlgClose()">취소</button><button class="btn btn-p" id="dlgYes">확인</button></div></div></div>
+<div id="toast" class="toast" style="display:none"></div>
+<div class="wrap">
+  <div class="card"><div class="card-h"><span class="card-t">1. 계통 설정</span><span class="card-s">급기/배기 · 덕트 형상 · 천장 속 · 보온</span></div><div class="card-b" id="sysBox"></div></div>
+  <div class="card"><div class="card-h"><span class="card-t">2. 실 · 기구</span><span class="card-s" id="roomSub"></span><span class="sp" style="flex:1"></span><button class="btn" onclick="roomAdd()">+ 실 추가</button></div><div class="card-b" id="roomBox"></div></div>
+  <div class="card"><div class="card-h"><span class="card-t">3. ZONE 구성</span><span class="card-s">각 ZONE 은 1번 줄 = 제일 끝. 그 지점에서 붙는 기구는 「+ 추가」, 갈라지는 덕트는 「+ 갈래」</span><span class="sp" style="flex:1"></span><button class="btn" onclick="sortZones()">끝부터 정렬</button><button class="btn" onclick="autoZones()">실별 자동 구성</button><button class="btn btn-p" onclick="zoneAdd()">+ ZONE 추가</button></div><div class="card-b" id="zoneBox"></div></div>
+  <div class="card"><div class="card-h"><span class="card-t">4. 계통 요약</span><span class="card-s">팬 · 루버 · 계통도 · 검토사항</span></div><div class="card-b" id="sumBox"></div></div>
+  <div class="card"><details class="ref"><summary>적용 기준 (근거)</summary><div class="card-b" id="refBox"></div></details></div>
+</div>
 
 <script>
-/* ─── 기준 데이터 ─── */
-/* 기준: AC-026 26.3.1.1 — 용도 x 구간별 덕트 풍속.
-   사람이 있는 실은 소음이 지배하고 없는 실은 공간과 공사비가 지배한다.
-   우리 시설은 건물이 공장이어도 사무실·중앙제어실은 office 로 본다 (26.2.2).
-   원형이 분기·메인에서 0.5 m/s 높은 것은 같은 단면적에서 수력직경이 크기 때문이다.
-   물리로 검증됨 (AC-026 3.3): V_원형/V_사각 = √(Dh_원형/Dh_사각) = 1.073, 즉 같은 마찰에서 +7.3%.
-   여덟 값 모두 이론과 5% 안에 든다. 취출구·말단을 올리지 않은 것도 맞다 —
-   그 구간은 마찰이 아니라 소음이 지배하고, 소음은 형상과 무관하게 속도 자체로 정해진다 */
-const VELOCITY = {
-  sq: {
-    residential: { outlet:2.0, terminal:2.5, branch:4.0, main:5.5 },
-    office:      { outlet:2.5, terminal:3.5, branch:5.0, main:7.0 },
-    commercial:  { outlet:2.5, terminal:4.0, branch:5.5, main:8.0 },
-    industrial:  { outlet:3.5, terminal:5.0, branch:7.0, main:9.0 },
-  },
-  rd: {
-    residential: { outlet:2.0, terminal:2.5, branch:4.5, main:6.0 },
-    office:      { outlet:2.5, terminal:3.5, branch:5.5, main:7.5 },
-    commercial:  { outlet:2.5, terminal:4.0, branch:6.0, main:8.5 },
-    industrial:  { outlet:3.5, terminal:5.0, branch:7.5, main:9.5 },
-  },
-};
-/* 기준: AC-026 26.3.1.3 — 개구율. 유효면적 ÷ 겉면적.
-   면풍속을 개구율로 나눈 값이 실제로 기구를 지나는 속도이며 그것이 소음을 정한다 */
-const OPENING = {
-  residential: { reg:0.60, diff:0.70 },
-  office:      { reg:0.65, diff:0.75 },
-  commercial:  { reg:0.65, diff:0.75 },
-  industrial:  { reg:0.70, diff:0.80 },
-};
+// ── 기준 데이터 ───────────────────────────────────────────────
+// 풍속 기준표 (2026-10-23 확정). 덕트 = 단면 기준, 기구 = 유효풍속(유효 개구면 기준).
+//   기구: ASHRAE HVAC Applications 소음 장 「유효개구면 최대 권장풍속」 RC 25~45 계열.
+//         학회 「건축기계설비 설계기준」 표 3.53 허용 취출풍속 상한 이내임을 확인함.
+//   덕트: 설계 기본값. ASHRAE 소음 기준 최대풍속보다 낮게 잡음. KDS 31 25 30 4.1(12) 15 m/s 이하 = 저속덕트.
+const USAGE=[
+//  key     이름                  메인 분기 말단 취출구 흡입구
+  ['studio','방송실·녹음실',      4.0, 3.0, 2.0, 1.8, 2.2],
+  ['res',   '주거·호텔 객실',     4.0, 3.0, 2.0, 2.2, 2.5],
+  ['hosp',  '병원·도서관',        4.5, 3.0, 2.0, 2.2, 2.5],
+  ['offp',  '사무 개인실·회의실', 5.5, 4.0, 2.5, 2.2, 2.5],
+  ['off',   '사무 일반·학교',     5.5, 4.0, 2.5, 2.5, 3.0],
+  ['com',   '상업·판매시설',      6.0, 4.5, 3.0, 2.8, 3.4],
+  ['fac',   '일반 공장',          7.5, 5.0, 3.5, 3.2, 3.8],
+];
+const U=k=>USAGE.find(u=>u[0]===k)||USAGE[4];
+const SEG_COL={main:2,branch:3,term:4};
+const SEG_NAME={main:'메인',branch:'분기',term:'말단'};
+// 학회 표 4.6 — 환기용 실내 흡입구(그릴) 유효풍속 2.0 m/s. 환기 전용 계통이면 표값보다 우선
+const VENT_RET=2.0;
 
-/* ─── 오버라이드 저장소 ─── */
-const S = {
-  regLong: null, regShort: null, rdDiff: null,
-  sqFlat: {}, sqSide: {}, rdDuct: {},
-  velSq:  { outlet:null, terminal:null, branch:null, main:null },
-  velRd:  { outlet:null, terminal:null, branch:null, main:null },
-  openSq: null, openRd: null,
-};
+// 보온 — KCS 31 20 05 덕트 보온두께 (내부 10~40℃, RH 75% 미만). 열전도율 등급으로 정함
+const INS={ga:[20,'가 λ0.030~0.034'],na:[25,'나 λ0.035~0.040'],da:[30,'다 λ0.041~0.046'],ra:[35,'라 λ0.047~0.051']};
+// 에너지절약설계기준 EPI 기계 7번 — 국가건설기준 두께의 20% 이상 → 5 mm 단위로 올림
+const insT=()=>S.insOff?0:(S.epi?Math.ceil(INS[S.insGrade][0]*1.2/5-1e-9)*5:INS[S.insGrade][0]);
 
-/* ─── 유틸 ─── */
-/* 기준: AC-027 27.3.1.2 — 선정 단위 50 mm 올림. 내림하면 단면적이 모자라 풍속이 오른다 */
-const ceil05 = v => Math.ceil(v / 0.05) * 0.05;
-const r05    = v => Math.round(v / 0.05) * 0.05;
-const $      = id => document.getElementById(id);
-const getUsage     = () => $('usageType').value;
-const getDevice    = () => $('deviceType').value;
-const getTotalFlow = () => parseFloat($('totalFlow').value)  || 0;
-const getUnitCount = () => Math.max(1, parseInt($('unitCount').value) || 1);
-const getCeilH     = () => parseFloat($('ceilHeight').value) || 0.6;
+// 판두께 — 각형은 장변, 원형(스파이럴)은 지름 기준. 교재값 · KCS 31 20 20 원문 대조 필요
+function plateRect(L){ if(L<=450)return .5; if(L<=750)return .6; if(L<=1500)return .8; if(L<=2200)return 1.0; return 1.2; }
+function plateRound(D){ if(D<=200)return .5; if(D<=600)return .6; if(D<=800)return .8; if(D<=1000)return 1.0; return 1.2; }
+// 각 면 여유 (보온 바깥에서, mm) — 플랜지·행거·지지앵글·작업 공간의 어림값
+function marginRect(L){ if(L<=750)return{t:45,b:55,l:75,r:75}; if(L<=1500)return{t:55,b:75,l:95,r:95}; return{t:65,b:95,l:115,r:115}; }
+function marginRound(D){ return D<=600?{t:40,b:20,l:30,r:30}:{t:50,b:40,l:50,r:50}; }
 
-/* ─── 현재 풍속/개구율 (오버라이드 반영) ─── */
-function getSqVel(u) {
-  const d = VELOCITY.sq[u];
-  return { outlet: S.velSq.outlet??d.outlet, terminal: S.velSq.terminal??d.terminal,
-           branch: S.velSq.branch??d.branch, main: S.velSq.main??d.main };
+const SPIRAL=[100,125,150,175,200,225,250,300,350,400,450,500,550,600,650,700,750,800,850,900,950,1000,1100,1200,1300,1400,1500];
+const NECK=[100,125,150,200,250,300,350,400,450,500,600];
+const ceil50=mm=>Math.ceil(mm/50-1e-9)*50;
+const floor50=mm=>Math.floor(mm/50+1e-9)*50;
+function pickStd(list,mm){ for(const d of list) if(d>=mm-1e-6) return d; return ceil50(mm); }
+
+// ── 상태 ─────────────────────────────────────────────────────
+const KEY='duct-calc-v2';
+let _n=0; const uid=p=>p+Date.now().toString(36).slice(-4)+(++_n).toString(36);
+function blank(){ return {v:2,project:'',mode:'supply',shape:'rect',device:'inline',ventOnly:true,ceil:600,
+  insGrade:'na',epi:true,insOff:false,mount:'bottom',fitGap:25,regOpen:0.65,grilleOpen:0.70,louverOpen:0.50,louverO:{w:null,h:null},
+  rooms:[],zones:[]}; }
+let S=blank();
+const $=id=>document.getElementById(id);
+const esc=s=>String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+const f0=v=>Math.round(v).toLocaleString('ko-KR');
+const f1=v=>(+v).toFixed(1), f2=v=>(+v).toFixed(2), f3=v=>(+v).toFixed(3);
+const num=(v,d=null)=>{const x=parseFloat(String(v??'').replace(/,/g,''));return isNaN(x)?d:x;};
+
+// ── 기구 (취출구 · 흡입구) ───────────────────────────────────
+// 급기+사각 = 레지스터, 급기+원형 = 디퓨져(넥 개략), 배기 = 그릴
+const termKind=()=>S.mode==='exhaust'?'grille':(S.shape==='round'?'diff':'reg');
+const KIND_NAME={reg:'레지스터',diff:'디퓨져',grille:'그릴'};
+function termVelDefault(r){
+  const u=U(r.usage);
+  if(S.mode==='exhaust') return S.ventOnly?Math.min(u[6],VENT_RET):u[6];
+  return u[5];
 }
-function getRdVel(u) {
-  const d = VELOCITY.rd[u];
-  return { outlet: S.velRd.outlet??d.outlet, terminal: S.velRd.terminal??d.terminal,
-           branch: S.velRd.branch??d.branch, main: S.velRd.main??d.main };
-}
-const getSqOpen = u => S.openSq ?? OPENING[u].reg;
-const getRdOpen = u => S.openRd ?? OPENING[u].diff;
-
-/* ─── 탭 전환 ─── */
-function switchTab(tab) {
-  ['sq','rd'].forEach(t => {
-    $(`tab-${t}`).classList.toggle('active', t===tab);
-    $(`panel-${t}`).classList.toggle('active', t===tab);
-  });
-}
-
-/* ─── 기기 변경 ─── */
-function onDeviceChange() {
-  const dev = getDevice();
-  $('countLabel').textContent = dev === 'ceiling' ? '팬 대수' : '레지스터/디퓨져 개수';
-  $('exhaustFlowGroup').style.display = dev === 'hrv' ? '' : 'none';
-  const isCeiling = dev === 'ceiling';
-  $('tab-sq').classList.toggle('disabled', isCeiling);
-  $('sq-register-section').style.display = isCeiling ? 'none' : '';
-  $('rd-diffuser-section').style.display = isCeiling ? 'none' : '';
-  if (isCeiling) switchTab('rd');
-  render();
-}
-
-/* ─── 용도 / 기본설정 변경 ─── */
-function onUsageChange()  { resetOverrides(); render(); }
-function onBasicChange()  { resetOverrides(); render(); }
-
-function resetOverrides() {
-  S.regLong = null; S.regShort = null; S.rdDiff = null;
-  S.sqFlat = {}; S.sqSide = {}; S.rdDuct = {};
-  S.velSq  = { outlet:null, terminal:null, branch:null, main:null };
-  S.velRd  = { outlet:null, terminal:null, branch:null, main:null };
-  S.openSq = null; S.openRd = null;
-}
-
-/* ─── 풍속 / 개구율 수기 변경 핸들러 ─── */
-function onVelChange(type, key) {
-  const id = `${type}-vel-${key}`;
-  const v  = parseFloat($(id).value);
-  if (type === 'sq') S.velSq[key] = (isNaN(v)||v<=0) ? null : v;
-  else               S.velRd[key] = (isNaN(v)||v<=0) ? null : v;
-  render();
-}
-function onOpenChange(type) {
-  const v = parseFloat($(`${type}-open-rate`).value);
-  if (type === 'sq') S.openSq = (isNaN(v)||v<=0) ? null : v;
-  else               S.openRd = (isNaN(v)||v<=0) ? null : v;
-  render();
-}
-
-/* ─── 레지스터 / 디퓨져 선정값 핸들러 ─── */
-function onRegLongChange()  { const v=parseFloat($('sq-long-sel').value); S.regLong=(isNaN(v)?null:v); render(); }
-function onRegShortChange() { const v=parseFloat($('sq-short-sel').value); S.regShort=(isNaN(v)?null:v); render(); }
-function onDiffDiamChange() { const v=parseFloat($('rd-diam-sel').value); S.rdDiff=(isNaN(v)?null:v); render(); }
-
-/* ─── 메인 렌더 ─── */
-function render() {
-  const totalFlow = getTotalFlow();
-  const unitCount = getUnitCount();
-  const unitFlow  = totalFlow / unitCount;
-  const usage     = getUsage();
-
-  $('unitFlow').value = totalFlow > 0
-    ? unitFlow.toLocaleString('ko-KR',{maximumFractionDigits:0}) : '';
-
-  updateCeilWarn();
-
-  if (getDevice() === 'hrv') {
-    const ex = $('exhaustFlow');
-    if (!ex.value && totalFlow > 0) ex.value = totalFlow;
+// 사각 기구 크기 — 필요 겉면적 이상 중 가장 작은 것, 아스펙트비 3 이하
+function rectPick(A,hLim=9999){
+  let best=null;
+  for(const h of [100,150,200,250,300,350,400,450,500,600]){
+    if(h>hLim) continue;
+    const w=Math.max(h,ceil50(A*1e6/h)); const ar=w/h, a=w*h;
+    if(ar>(hLim<9999?4:3)+1e-9) continue;
+    if(!best||a<best.a-1||(Math.abs(a-best.a)<1&&ar<best.ar)) best={w,h,a,ar};
   }
+  if(best) return best;
+  // 높이 제한 때문에 아스펙트비 3 이하가 안 되면 4 까지, 그래도 안 되면 제한 높이에서 길게
+  if(hLim<9999){ const h=Math.max(100,floor50(hLim)); return {w:Math.max(h,ceil50(A*1e6/h)),h}; }
+  const s=ceil50(Math.sqrt(A)*1000); return {w:s,h:s};
+}
+function calcTerm(r){
+  const kind=termKind(), cnt=Math.max(1,r.count|0), q=(+r.flow||0)/cnt;
+  const V=r.vO||termVelDefault(r), Ak=q/3600/V;
+  const lim=TLIM[r.id]||9999;   // 이 실의 기구가 붙는 덕트 중 크기가 고정된 곳에서 허용되는 기구 치수
+  if(kind==='diff'){
+    // 디퓨져는 카탈로그의 넥 크기·NC·도달거리로 고른다 (학회 15.3). 여기서는 넥 지름 개략만 낸다
+    let d=r.dO||pickStd(NECK,Math.sqrt(4*Ak/Math.PI)*1000), limited=false;
+    if(!r.dO&&d>lim){ const fit=NECK.filter(x=>x<=lim); if(fit.length){ d=fit[fit.length-1]; limited=true; } }
+    const area=Math.PI*d*d/4/1e6;
+    return {kind,q,V,Ak,d,area,vAct:q/3600/area,ok:q/3600/area<=V+1e-6,limited};
+  }
+  const a=kind==='grille'?S.grilleOpen:S.regOpen, A=Ak/a;
+  // 측면 직부는 덕트 높이 상한, 크기가 고정된 덕트는 그 치수에서 여유를 뺀 만큼 → 기구를 낮고 넓게 고른다
+  const hLim=Math.min(lim,S.mount==='side'&&S.shape!=='round'?hMax()-GAP():9999);
+  const p=rectPick(A,hLim), free=rectPick(A);
+  // 한쪽만 직접 정하면 다른 쪽을 필요 겉면적에 맞춰 다시 구한다
+  let w=r.wO||p.w, h=r.hO||p.h;
+  if(r.wO&&!r.hO) h=Math.max(100,ceil50(A*1e6/r.wO));
+  if(r.hO&&!r.wO) w=Math.max(100,ceil50(A*1e6/r.hO));
+  const area=w*h/1e6;
+  return {kind,q,V,Ak,a,A,w,h,area,vAct:q/3600/(area*a),vFace:q/3600/area,ok:q/3600/(area*a)<=V+1e-6,limited:!r.wO&&!r.hO&&(p.w!==free.w||p.h!==free.h)};
+}
 
-  if (totalFlow > 0) {
-    renderSqRegister(usage, unitFlow);
-    renderRdDiffuser(usage, unitFlow);
-    renderSqDuctTable(usage, unitFlow);
-    renderRdDuctTable(usage, unitFlow);
+// ── ZONE 계산 ───────────────────────────────────────────────
+// 한 줄 = 그 지점에서 합류하는 기구·ZONE. 그 줄의 덕트 = 그 줄까지 누적된 기구 전체를 싣고 팬 쪽으로 가는 구간
+const oKey=(r,i)=>r+':'+i;
+function outletList(){ const L=[]; for(const r of S.rooms) for(let i=1;i<=Math.max(1,r.count|0);i++) L.push({key:oKey(r.id,i),room:r,i,label:r.name+'-'+i}); return L; }
+function outletMap(){ const m={}; for(const o of outletList()) m[o.key]=o; return m; }
+const zoneById=id=>S.zones.find(z=>z.id===id);
+function zoneContains(zid,target,seen=new Set()){
+  if(zid===target) return true; if(seen.has(zid)) return false; seen.add(zid);
+  const z=zoneById(zid); if(!z) return false;
+  for(const row of z.rows) for(const it of row.items) if(it.t==='z'&&zoneContains(it.id,target,seen)) return true;
+  return false;
+}
+function usedSets(){
+  const o=new Set(), z=new Set();
+  for(const zz of S.zones) for(const row of zz.rows) for(const it of row.items){ if(it.t==='o')o.add(it.k); else z.add(it.id); }
+  return {o,z};
+}
+// 잘못된 참조(지운 실·줄어든 개수·지운 ZONE·중복)를 정리한다
+function normalize(){
+  const om=outletMap(), seenO=new Set(), seenZ=new Set();
+  for(const z of S.zones) for(const row of z.rows){
+    row.items=row.items.filter(it=>{
+      if(it.t==='o'){ if(!om[it.k]||seenO.has(it.k))return false; seenO.add(it.k); return true; }
+      if(!zoneById(it.id)||it.id===z.id||seenZ.has(it.id)||zoneContains(it.id,z.id))return false; seenZ.add(it.id); return true;
+    });
   }
 }
+const hMax=(c=S.ceil)=>Math.max(100,floor50(c-45-55-2*insT()-2*0.5));
+const zCeil=z=>(z&&z.ceil)||S.ceil;
+const GAP=()=>2*(S.fitGap??25);   // 기구 양쪽 여유 합 — 덕트 안치수 ≥ 기구 + 여유 × 2
 
-/* ─── 사각 레지스터 ─── */
-function renderSqRegister(usage, unitFlow) {
-  const vel      = getSqVel(usage);
-  const openRate = getSqOpen(usage);
-
-  setInfoInput('sq-vel-outlet',   vel.outlet,   S.velSq.outlet);
-  setInfoInput('sq-vel-terminal', vel.terminal, S.velSq.terminal);
-  setInfoInput('sq-vel-branch',   vel.branch,   S.velSq.branch);
-  setInfoInput('sq-vel-main',     vel.main,     S.velSq.main);
-  setInfoInput('sq-open-rate',    openRate,     S.openSq);
-
-  const flowM3s = unitFlow / 3600;
-  const effArea = flowM3s / vel.outlet;
-  const minArea = effArea / openRate;
-
-  $('sq-reg-flow').innerHTML = numHTML(unitFlow.toLocaleString('ko-KR',{maximumFractionDigits:0}), 'CMH');
-  $('sq-eff-area').innerHTML = numHTML(effArea.toFixed(3), 'm²');
-  $('sq-min-area').innerHTML = numHTML(minArea.toFixed(3), 'm²');
-
-  const longCalc  = Math.sqrt(minArea);
-  const longSel   = S.regLong  !== null ? S.regLong  : ceil05(longCalc) + 0.05;
-  const shortCalc = minArea / longSel;
-  const shortSel  = S.regShort !== null ? S.regShort : ceil05(shortCalc);
-
-  $('sq-long-calc').textContent  = longCalc.toFixed(3);
-  $('sq-short-calc').textContent = shortCalc.toFixed(3);
-  setSelectInput('sq-long-sel',  longSel.toFixed(2),  S.regLong  !== null);
-  setSelectInput('sq-short-sel', shortSel.toFixed(2), S.regShort !== null);
-
-  const selArea = longSel * shortSel;
-  const ok = selArea >= minArea - 1e-6;
-  const el = $('sq-area-compare');
-  el.style.display = '';
-  el.className = `area-compare ${ok?'ok':'ng'}`;
-  el.innerHTML = `<span class="badge badge-${ok?'ok':'danger'}">${ok?'OK':'부족'}</span>
-    <span>선정 면적 ${selArea.toFixed(3)} m² ${ok?'≥':'<'} 최소 설치면적 ${minArea.toFixed(3)} m²</span>`;
+function sizeSeg(flow,V,ctx,ov){
+  const A=flow/3600/V, ins=insT();
+  const cap=ctx.cap||{w:1e9,h:1e9,d:1e9};
+  if(S.shape==='round'){
+    const need=Math.max(Math.sqrt(4*A/Math.PI)*1000,ctx.minD||0,ctx.mD||0);
+    let d=ov.d||pickStd(SPIRAL,need), capped=false;
+    if(!ov.d&&d>cap.d){ d=cap.d; capped=true; }
+    const area=Math.PI*d*d/4/1e6, p=plateRound(d), m=marginRound(d);
+    const oD=d+2*p+2*ins;
+    return {A,d,area,vAct:flow/3600/area,ar:1,plate:p,ins,m,outW:oD,outH:oD,totW:oD+m.l+m.r,totH:oD+m.t+m.b,dim:'φ'+f0(d),ceil:ctx.ceil,
+      rev:d<(ctx.minD||0)-1e-6,mountBad:ctx.mD&&d<ctx.mD-1e-6,capped,fixed:!!ov.d||capped};
+  }
+  const HM=Math.min(hMax(ctx.ceil),cap.h), need=Math.max(A,ctx.minArea||0);
+  let h=ov.h||Math.max(ctx.hPrev||0,ctx.hIn||0)||Math.min(HM,Math.max(100,ceil50(Math.sqrt(A)*1000)));
+  if(!ov.h&&ctx.mH) h=Math.max(h,ceil50(ctx.mH));          // 측면 직부: 덕트 높이 ≥ 기구 높이 + 여유 × 2
+  if(!ov.h&&h>cap.h) h=cap.h;                               // 팬 쪽에서 크기를 고정한 줄보다 크지 않게
+  const wOf=hh=>Math.min(Math.max(100,ceil50(need*1e6/hh),ctx.mW?ceil50(ctx.mW):0,ctx.wPrev||0),ov.w?1e9:cap.w);   // 같은 ZONE 안에서는 팬 쪽으로 갈수록 폭·높이가 줄지 않게   // 하부 직부: 덕트 폭 ≥ 기구 단변 + 여유 × 2
+  let w=ov.w||wOf(h), auto=false;
+  // 폭만 직접 정하면 높이를 필요 면적에 맞춰 다시 구한다 (기구 측면 직부 조건 포함)
+  if(ov.w&&!ov.h){ h=Math.max(100,ceil50(need*1e6/ov.w),ctx.mH?ceil50(ctx.mH):0); auto=true; }
+  if(!ov.h&&!ov.w){
+    // 기준: AC-027 Rule 3 — 아스펙트비 4 초과면 높이를 50 mm 씩 올려 찾고, 천장 속 한계면 분할 검토
+    while(w/h>4+1e-9&&h+50<=HM){ h+=50; w=wOf(h); auto=true; }
+    while(h/w>4+1e-9&&h-50>=Math.max(100,ctx.mH?ceil50(ctx.mH):0,ctx.hPrev||0)){ h-=50; w=wOf(h); auto=true; }
+  }
+  const capped=(!ov.w&&w>=cap.w-1e-6&&cap.w<1e9&&w*h<need*1e6-1)||(!ov.h&&h>=cap.h-1e-6&&cap.h<1e9&&w*h<need*1e6-1);
+  const area=w*h/1e6, L=Math.max(w,h), p=plateRect(L), m=marginRect(L);
+  const outW=w+2*p+2*ins, outH=h+2*p+2*ins;
+  return {A,w,h,area,vAct:flow/3600/area,ar:L/Math.min(w,h),plate:p,ins,m,outW,outH,totW:outW+m.l+m.r,totH:outH+m.t+m.b,auto,dim:f0(w)+'×'+f0(h),ceil:ctx.ceil,
+    rev:area<(ctx.minArea||0)-1e-9&&!capped,mountBad:(ctx.mW&&w<ctx.mW-1e-6)||(ctx.mH&&h<ctx.mH-1e-6),capped,
+    fixed:!!ov.w||!!ov.h||(cap.w<1e9&&w>=cap.w-1e-6)||(cap.h<1e9&&h>=cap.h-1e-6)};
 }
 
-/* ─── 원형 디퓨져 ─── */
-function renderRdDiffuser(usage, unitFlow) {
-  const vel      = getRdVel(usage);
-  const openRate = getRdOpen(usage);
-
-  setInfoInput('rd-vel-outlet',   vel.outlet,   S.velRd.outlet);
-  setInfoInput('rd-vel-terminal', vel.terminal, S.velRd.terminal);
-  setInfoInput('rd-vel-branch',   vel.branch,   S.velRd.branch);
-  setInfoInput('rd-vel-main',     vel.main,     S.velRd.main);
-  setInfoInput('rd-open-rate',    openRate,     S.openRd);
-
-  const flowM3s = unitFlow / 3600;
-  const effArea = flowM3s / vel.outlet;
-  const minArea = effArea / openRate;
-
-  $('rd-diff-flow').innerHTML = numHTML(unitFlow.toLocaleString('ko-KR',{maximumFractionDigits:0}), 'CMH');
-  $('rd-eff-area').innerHTML  = numHTML(effArea.toFixed(3), 'm²');
-  $('rd-min-area').innerHTML  = numHTML(minArea.toFixed(3), 'm²');
-
-  const diamCalc = Math.sqrt(minArea * 4 / Math.PI);
-  const diamSel  = S.rdDiff !== null ? S.rdDiff : ceil05(diamCalc);
-
-  $('rd-diam-calc').textContent = diamCalc.toFixed(3);
-  setSelectInput('rd-diam-sel', diamSel.toFixed(2), S.rdDiff !== null);
-
-  const selArea = Math.PI * Math.pow(diamSel / 2, 2);
-  const ok = selArea >= minArea - 1e-6;
-  const el = $('rd-area-compare');
-  el.style.display = '';
-  el.className = `area-compare ${ok?'ok':'ng'}`;
-  el.innerHTML = `<span class="badge badge-${ok?'ok':'danger'}">${ok?'OK':'부족'}</span>
-    <span>선정 면적 ${selArea.toFixed(3)} m² ${ok?'≥':'<'} 최소 설치면적 ${minArea.toFixed(3)} m²</span>`;
+let MEMO={}, CAP={}, TLIM={};
+// 크기를 직접 정한 줄은 그보다 말단 쪽(앞 줄 · 그 줄로 들어오는 갈래)의 상한이 된다
+function computeCaps(){
+  CAP={}; const INF={w:1e9,h:1e9,d:1e9}, mn=(a,b)=>({w:Math.min(a.w,b.w),h:Math.min(a.h,b.h),d:Math.min(a.d,b.d)});
+  const own=r=>({w:r.wO||1e9,h:r.hO||1e9,d:r.dO||1e9});
+  const walk=(zid,inh,dep=0)=>{ const z=zoneById(zid); if(!z||dep>50||CAP[zid])return;
+    // CAP[zid][i] = i 번 줄보다 팬 쪽에서 직접 정한 크기들 + 이 ZONE 이 합류하는 줄의 크기 중 가장 작은 것
+    CAP[zid]=z.rows.map((_,i)=>{ let m=inh; for(let j=i+1;j<z.rows.length;j++) m=mn(m,own(z.rows[j])); return m; });
+    z.rows.forEach((r,i)=>{ const here=mn(CAP[zid][i],own(r)); for(const it of r.items) if(it.t==='z') walk(it.id,here,dep+1); }); };
+  const used=usedSets(); for(const z of S.zones) if(!used.z.has(z.id)) walk(z.id,INF);
 }
-
-/* ─── 공통 유틸 ─── */
-function numHTML(val, unit) { return `${val}<span class="calc-card-unit">${unit}</span>`; }
-function setSelectInput(id, val, isOverride) {
-  const el = $(id); el.value = val;
-  el.classList.toggle('user-override', isOverride);
+// 덕트 ↔ 기구 맞춤: ① 기구에 맞춰 덕트를 키우고 ② 크기가 고정된 덕트에 붙는 기구는 그 덕트에 들어가게 다시 고른다
+function solve(){
+  // 크기 변경은 팬 쪽으로만 전파한다 (말단이 커지면 분기·메인이 따라 커짐). 팬 쪽을 줄여도 말단 쪽은 그대로 두고 「치수 역전」으로 알린다
+  TLIM={}; MEMO={}; CAP={}; S.zones.forEach(z=>calcZone(z.id));
+  if(S.mount==='collar') return;
+  const L={};
+  for(const z of S.zones) for(const s of calcZone(z.id).segs){ if(s.empty||!s.fixed) continue;
+    const avail=(S.shape==='round'?s.d:S.mount==='bottom'?s.w:s.h)-GAP();
+    for(const rid of s.direct) L[rid]=Math.min(L[rid]??9999,avail); }
+  if(Object.keys(L).length){ TLIM=L; MEMO={}; S.zones.forEach(z=>calcZone(z.id)); }
 }
-function setInfoInput(id, val, override) {
-  const el = $(id); if (!el) return;
-  el.value = parseFloat(val.toFixed(3));
-  el.classList.toggle('user-override', override != null);
-}
-function getRowLabel(i, n) {
-  if (n===1) return '메인';
-  if (i===1) return '말단';
-  if (i===n) return '메인';
-  return `분기 ${i}개소`;
-}
-function getRowVel(i, n, vel) {
-  if (i===n) return vel.main;
-  if (i===1) return vel.terminal;
-  return vel.branch;
-}
-
-/* ═══════════════════════════════════════
-   사각덕트 분기 테이블
-═══════════════════════════════════════ */
-function getEffSide(i) {
-  if (S.sqSide[i] != null) return S.sqSide[i];
-  for (let j = i-1; j >= 1; j--)
-    if (S.sqSide[j] != null) return S.sqSide[j];
-  return r05(getCeilH() - 0.15);
-}
-
-function autoFlatSel(i, n, flatCalc, shortSel) {
-  const base = ceil05(flatCalc);
-  if (i===1 && n>1 && shortSel>0)
-    /* 기준: AC-027 27.3.1.2 · AC-039 — 말단 덕트의 평면 >= 취출구 단변 + 100 mm.
-       기구를 덕트에 뚫어 붙이므로 덕트가 기구보다 커야 한다 (27.3.6).
-       개수는 앱이 정하지 않는다. 배치에서 나오며 개수를 늘려도 정압은 줄지 않는다 (AC-039 39.3.2.4) */
-    return Math.max(base, +((shortSel+0.1).toFixed(2)));
-  return base;
-}
-
-function computeSqRow(i, n, unitFlow, vel, shortSel) {
-  const ceilH   = getCeilH();
-  /* 기준: AC-027 27.3.1.2 — 아스펙트비 4 이하. 넘으면 측면을 50 mm 씩 올려 찾는다.
-     4 는 학회 「건축기계설비 설계기준」 제6장 (8)「장방형 덕트 단면의 아스펙트비는 원칙적으로 4:1 이하로 한다」에서 온다 (AC-027 2.2).
-     다만 물리에는 꺾이는 지점이 없다 — 마찰이 완만하게 계속 나빠질 뿐이며 4 에서 1.25배다. 그래서 조문도 「원칙적으로」이고
-     우리도 금지가 아니라 3단계 판정(3 이하 양호 / 3~4 주의 / 4 초과 분할 검토)으로 둔다.
-     측면을 올려 아스펙트비를 낮추면 단면적이 늘어 내진 면제 경계 0.6㎡ 를 넘을 수 있다 (AC-079 Rule 3)
-     천장 속 -0.15 m 는 보온 50 + 플랜지 40 + 행거 60 의 어림 (27.3.4) */
-  const maxSide = r05(ceilH - 0.15);
-  const flow    = i===n ? getTotalFlow() : unitFlow*i;
-  const rowVel  = getRowVel(i, n, vel);
-  const minArea = (flow/3600) / rowVel;
-
-  let effSide = getEffSide(i), autoAdjusted = false;
-  if (S.sqSide[i] == null) {
-    let fc=minArea/effSide, fs=autoFlatSel(i,n,fc,shortSel);
-    let asp=Math.max(fs,effSide)/Math.min(fs,effSide);
-    while (asp>4 && effSide<maxSide-1e-9) {
-      effSide = Math.min(+(Math.round((effSide+0.05)*100)/100).toFixed(2), maxSide);
-      autoAdjusted = true;
-      fc=minArea/effSide; fs=autoFlatSel(i,n,fc,shortSel);
-      asp=Math.max(fs,effSide)/Math.min(fs,effSide);
+function calcZone(zid,stack=[]){
+  if(MEMO[zid]) return MEMO[zid];
+  const z=zoneById(zid); if(!z||stack.includes(zid)) return {flow:0,outlets:[],rooms:new Set(),segs:[],last:null,err:true};
+  const om=outletMap(); const outlets=[]; const rooms=new Set(); const segs=[]; let prev=null;
+  for(const row of z.rows){
+    const subs=[];
+    for(const it of row.items){
+      if(it.t==='o'&&om[it.k]){ outlets.push(om[it.k]); rooms.add(om[it.k].room.id); }
+      else if(it.t==='z'){ const r=calcZone(it.id,[...stack,zid]); subs.push(r); for(const o of r.outlets)outlets.push(o); for(const x of r.rooms)rooms.add(x); }
     }
+    if(!outlets.length){ segs.push({row,empty:true}); continue; }
+    const flow=outlets.reduce((s,o)=>s+(+o.room.flow||0)/Math.max(1,o.room.count|0),0);
+    const type=rooms.size>=2?'main':(outlets.length===1?'term':'branch');
+    // 그 구간이 담당하는 실 중 가장 조용해야 하는 실의 풍속 (가장 낮은 값)
+    const V=row.vO||Math.min(...[...rooms].map(id=>U((S.rooms.find(r=>r.id===id)||{}).usage)[SEG_COL[type]]));
+    const lasts=subs.map(s=>s.last).filter(Boolean);
+    // 이 줄에 직접 붙는 기구 — 접속 방식에 따라 덕트 최소 치수를 준다
+    const mc={mW:0,mH:0,mD:0};
+    if(S.mount!=='collar') for(const it of row.items) if(it.t==='o'&&om[it.k]){
+      const t=calcTerm(om[it.k].room);
+      if(t.kind==='diff') mc.mD=Math.max(mc.mD,t.d);
+      else if(S.shape==='round') mc.mD=Math.max(mc.mD,t.h+GAP());
+      else if(S.mount==='bottom') mc.mW=Math.max(mc.mW,t.h+GAP());
+      else mc.mH=Math.max(mc.mH,t.h+GAP());
+    }
+    const ctx={ceil:zCeil(z),cap:(CAP[zid]||[])[z.rows.indexOf(row)],...mc,hPrev:prev?prev.h:0,wPrev:prev?prev.w:0,hIn:Math.max(0,...lasts.map(l=>l.h||0)),
+      minArea:Math.max(prev?prev.area:0,...lasts.map(l=>l.area)),minD:Math.max(prev?prev.d||0:0,...lasts.map(l=>l.d||0))};
+    const sz=sizeSeg(flow,V,ctx,{w:row.wO,h:row.hO,d:row.dO});
+    const seg=Object.assign({row,flow,type,V,cnt:outlets.length,subs:subs.map(s=>s.zid),direct:row.items.filter(it=>it.t==='o'&&om[it.k]).map(it=>om[it.k].room.id)},sz);
+    segs.push(seg); prev=seg;
   }
-
-  const flatCalc = minArea / effSide;
-  const flatSel  = S.sqFlat[i]!=null ? S.sqFlat[i] : autoFlatSel(i,n,flatCalc,shortSel);
-  const selArea  = flatSel * effSide;
-  const aspect   = Math.max(flatSel,effSide) / Math.min(flatSel,effSide);
-
-  return { flow, rowVel, minArea, flatCalc, flatSel,
-    flatOverride: S.sqFlat[i]!=null, sideVal: effSide,
-    sideOverride: S.sqSide[i]!=null, autoAdjusted, selArea, aspect,
-    areaOk: selArea >= minArea-1e-6 };
+  const res={zid,flow:prev?prev.flow:0,outlets,rooms,segs,last:prev};
+  MEMO[zid]=res; return res;
+}
+function segChecks(s){
+  const c=[];
+  if(s.ar>4+1e-9) c.push(['b-red','분할 검토']); else if(s.ar>3+1e-9) c.push(['b-warn','아스펙트비 주의']);
+  if(s.totH>s.ceil) c.push(['b-red','천장 속 초과']);
+  if(s.rev) c.push(['b-red','치수 역전']);
+  if(s.mountBad) c.push(['b-red','기구 안 들어감']);
+  if(s.capped) c.push(['b-warn','팬 쪽 고정 크기에 맞춤']);
+  if(s.vAct>s.V*1.05) c.push(['b-warn','기준 풍속 초과']);
+  if(s.area>=0.6) c.push(['b-warn','내진 대상']);
+  if(s.vAct>15) c.push(['b-red','15 m/s 초과']);
+  if(s.auto) c.push(['b-info','높이 자동']);
+  return c;
 }
 
-function renderSqDuctTable(usage, unitFlow) {
-  const wrap = $('sq-duct-table-wrap'), n = getUnitCount();
-  const vel  = getSqVel(usage);
-  const shortSel = parseFloat($('sq-short-sel').value) || 0;
-  if (n<1) { wrap.innerHTML=''; return; }
+// ── 루버 · 팬 ───────────────────────────────────────────────
+// 기준: KDS 31 25 30 4.4 — 3,300 L/s 이상은 전면풍속(외기 2.0 / 배기 2.5 m/s),
+//   미만은 전면면적 A = 0.4 + kQ (외기 k=0.00036, 배기 k=0.00025). 개구율 45% 이하는 별도 산정.
+//   배기 식은 원문에 구간(3,300 이상 / 2,400 미만)과 「/」 오탈자가 있어 원문 재검증 필요.
+function calcLouver(Qcmh){
+  const ex=S.mode==='exhaust', Ls=Qcmh/3.6;
+  let A=Ls>=3300?Qcmh/3600/(ex?2.5:2.0):0.4+(ex?0.00025:0.00036)*Ls, adj=false;
+  // 개구율 45% 이하 — 45% 루버와 같은 유효면적이 되도록 키운다 (해석)
+  if(S.louverOpen<=0.45){ A=A*0.45/S.louverOpen; adj=true; }
+  // 한쪽만 정하면 다른 쪽을 필요 전면면적에 맞춰 다시 구한다
+  const s=ceil50(Math.sqrt(A)*1000), oW=S.louverO.w, oH=S.louverO.h;
+  const h=oH||(oW?Math.max(100,ceil50(A*1e6/oW)):s), w=oW||Math.max(ceil50(A*1e6/h),100);
+  const area=w*h/1e6;
+  return {ex,Ls,A,adj,w,h,area,vFace:Qcmh/3600/area,ok:area>=A-1e-6,rule:Ls>=3300?'전면풍속 '+(ex?'2.5':'2.0')+' m/s 이하':'A = 0.4 + '+(ex?'0.00025':'0.00036')+' × Q'};
+}
 
-  const rows = [];
-  for (let i=1;i<=n;i++) rows.push(computeSqRow(i,n,unitFlow,vel,shortSel));
-
-  let html = `<div class="duct-table-wrap"><table class="duct-table">
-  <thead><tr>
-    <th rowspan="2" style="text-align:left">구간</th>
-    <th rowspan="2">풍량<br><span style="font-weight:400">(CMH)</span></th>
-    <th rowspan="2">풍속<br><span style="font-weight:400">(m/s)</span></th>
-    <th rowspan="2">최소설치면적<br><span style="font-weight:400">(m²)</span></th>
-    <th colspan="2">평면 (m)</th>
-    <th colspan="2">측면 (m)</th>
-    <th rowspan="2">선정면적<br><span style="font-weight:400">(m²)</span></th>
-    <th rowspan="2">면적비교</th>
-    <th rowspan="2">아스펙트비</th>
-  </tr><tr>
-    <th>계산값</th><th>선정값</th><th>계산값</th><th>선정값</th>
-  </tr></thead><tbody>`;
-
-  for (let i=1;i<=n;i++) {
-    const r = rows[i-1];
-    let aspBadge;
-    if (r.aspect<=3)      aspBadge=`<span class="badge badge-ok">${r.aspect.toFixed(2)}</span>`;
-    else if (r.aspect<=4) aspBadge=`<span class="badge badge-warning">${r.aspect.toFixed(2)} 주의</span>`;
-    else                  aspBadge=`<span class="badge badge-danger">${r.aspect.toFixed(2)} — 덕트 분할 검토</span>`;
-
-    const autoTag  = r.autoAdjusted ? `<span class="auto-up-tag">↑자동</span>` : '';
-    const flatWarn = r.flatSel>1.2  ? `<span class="warn-duct">⚠ 팬 분산 배치 검토</span>` : '';
-
-    html += `<tr class="${i===n?'row-main':''}">
-      <td class="seg-label">${getRowLabel(i,n)}</td>
-      <td>${r.flow.toLocaleString('ko-KR',{maximumFractionDigits:0})}</td>
-      <td>${r.rowVel.toFixed(1)}</td>
-      <td class="cv">${r.minArea.toFixed(4)}</td>
-      <td class="cv">${r.flatCalc.toFixed(3)}</td>
-      <td><input type="number" class="duct-input${r.flatOverride?' user-override':''}"
-            id="sq-flat-sel-${i}" step="0.05" min="0.05" value="${r.flatSel.toFixed(2)}"
-            onchange="onSqFlatChange(${i})">${flatWarn}</td>
-      <td class="cv">${r.sideVal.toFixed(3)}${autoTag}</td>
-      <td><input type="number" class="duct-input${r.sideOverride?' user-override':''}"
-            id="sq-side-sel-${i}" step="0.05" min="0.05" value="${r.sideVal.toFixed(2)}"
-            onchange="onSqSideChange(${i})"></td>
-      <td>${r.selArea.toFixed(3)}</td>
-      <td><span class="badge badge-${r.areaOk?'ok':'danger'}">${r.areaOk?'OK':'부족'}</span></td>
-      <td>${aspBadge}</td>
-    </tr>`;
+// ── 렌더 ─────────────────────────────────────────────────────
+function render(){
+  normalize(); solve();
+  $('projectName').value=S.project||'';
+  renderSys(); renderRooms(); renderZones(); renderSummary(); renderRef(); save();
+}
+const sel=(opts,v,on)=>`<select class="fs" onchange="${on}">${opts.map(([k,t])=>`<option value="${k}"${k===v?' selected':''}>${esc(t)}</option>`).join('')}</select>`;
+function renderSys(){
+  const t=insT();
+  $('sysBox').innerHTML=`<div class="grid">
+    <div class="fg"><span class="fl">계통</span>${sel([['supply','급기 (취출구)'],['exhaust','배기 (흡입구)']],S.mode,"setSys('mode',this.value)")}</div>
+    <div class="fg"><span class="fl">덕트 형상</span>${sel([['rect','사각 덕트'],['round','원형 덕트 (스파이럴)']],S.shape,"setSys('shape',this.value)")}</div>
+    <div class="fg"><span class="fl">장비</span>${sel([['inline','인라인덕트팬'],['hrv','전열교환기'],['ceiling','천정형팬'],['ahu','공조기']],S.device,"setSys('device',this.value)")}</div>
+    <div class="fg"><span class="fl">덕트 설치 가능 높이 (mm)</span><input class="fi" type="text" inputmode="decimal" step="50" value="${f0(S.ceil)}" onchange="setSys('ceil',this.value)"><span class="fh">기본값 · 보 밑 등은 ZONE 마다 따로 입력</span></div>
+    <div class="fg"><span class="fl">보온재 열전도율 등급</span>${sel(Object.entries(INS).map(([k,v])=>[k,v[1]+' · '+v[0]+'T']),S.insGrade,"setSys('insGrade',this.value)")}</div>
+    <div class="fg"><span class="fl">보온 옵션</span>
+      <label class="chk"><input type="checkbox" ${S.epi?'checked':''} onchange="setSys('epi',this.checked)">EPI 7번 (+20%)</label>
+      <label class="chk" style="height:auto"><input type="checkbox" ${S.insOff?'checked':''} onchange="setSys('insOff',this.checked)">보온 없음</label>
+      <span class="fh">적용 보온 두께 <b>${t} mm</b></span></div>
+    <div class="fg"><span class="fl">기구 개구율 (레지스터 / 그릴)</span><div style="display:flex;gap:6px"><input class="fi" style="width:50%" type="text" inputmode="decimal" step="0.05" value="${S.regOpen}" onchange="setSys('regOpen',this.value)"><input class="fi" style="width:50%" type="text" inputmode="decimal" step="0.05" value="${S.grilleOpen}" onchange="setSys('grilleOpen',this.value)"></div><span class="fh">카탈로그 값 우선 · OBD 부착 시 낮아짐</span></div>
+    <div class="fg"><span class="fl">기구 접속 방식</span>${sel(S.shape==='round'
+        ?[['collar','칼라·플렉시블 (제약 없음)'],['bottom','덕트 직부 (지름 ≥ 기구)']]
+        :[['collar','칼라·플렉시블 (제약 없음)'],['bottom','덕트 하부 직부'],['side','덕트 측면 직부']],S.mount==='side'&&S.shape==='round'?'bottom':S.mount,"setSys('mount',this.value)")}
+      <span class="fh">${S.mount==='collar'?'기구와 덕트 치수 연동 없음':S.shape==='round'?'기구가 붙는 줄의 덕트 지름 ≥ 기구 + 여유 × 2':S.mount==='bottom'?'기구가 붙는 줄의 덕트 폭 ≥ 기구 단변 + 여유 × 2':'덕트 높이 ≥ 기구 높이 + 여유 × 2 · 기구는 낮고 넓게'}</span></div>
+    ${S.mount==='collar'?'':`<div class="fg"><span class="fl">기구 여유 (한쪽, mm)</span><input class="fi" type="text" inputmode="decimal" value="${f0(S.fitGap??25)}" onchange="setSys('fitGap',this.value)"><span class="fh">덕트 안치수 = 기구 + ${f0(GAP())} mm 이상</span></div>`}
+    <div class="fg"><span class="fl">외벽 루버 개구율 (외기·배기)</span><input class="fi" type="text" inputmode="decimal" step="0.05" value="${S.louverOpen}" onchange="setSys('louverOpen',this.value)"><span class="fh">0.45 이하면 면적 보정 (KDS 4.4)</span></div>
+    ${S.mode==='exhaust'?`<div class="fg"><span class="fl">흡입구 기준</span><label class="chk"><input type="checkbox" ${S.ventOnly?'checked':''} onchange="setSys('ventOnly',this.checked)">환기 전용 계통 (실내 흡입구 2.0 m/s)</label><span class="fh">학회 표 4.6 · 공조 계통이면 해제</span></div>`:''}
+  </div>`;
+}
+function renderRooms(){
+  const kind=termKind(), list=S.rooms;
+  $('roomSub').textContent=`${KIND_NAME[kind]} · 개당 풍량은 실 풍량 ÷ 개수 · 유효풍속 기준`;
+  if(!list.length){ $('roomBox').innerHTML=`<div class="empty">실을 추가하거나 상단의 「예시」를 눌러 보세요.</div>`; return; }
+  const isD=kind==='diff';
+  let h=`<div class="tw"><table class="t"><thead><tr>
+    <th>실명</th><th>용도</th><th>풍량<br>(CMH)</th><th>${KIND_NAME[kind]}<br>개수</th><th>개당 풍량<br>(CMH)</th>
+    <th>유효풍속<br>(m/s)</th><th>필요 유효면적<br>(m²)</th>${isD?'':`<th>개구율</th><th>필요 겉면적<br>(m²)</th>`}
+    <th colspan="${isD?1:2}">${isD?'넥 φ (개략)':'선정 크기 W × H (mm)'}</th><th>실제 유효풍속<br>(m/s)</th>${isD?'':'<th>면풍속<br>(m/s)</th>'}<th>판정</th><th></th></tr></thead><tbody>`;
+  for(const r of list){
+    const c=calcTerm(r);
+    h+=`<tr><td><input class="ti w" value="${esc(r.name)}" onchange="roomSet('${r.id}','name',this.value)"></td>
+      <td><select class="ti" style="width:150px" onchange="roomSet('${r.id}','usage',this.value)">${USAGE.map(u=>`<option value="${u[0]}"${u[0]===r.usage?' selected':''}>${u[1]}</option>`).join('')}</select></td>
+      <td><input class="ti n" type="text" inputmode="decimal" value="${f0(r.flow)}" onchange="roomSet('${r.id}','flow',this.value)"></td>
+      <td><input class="ti s" type="text" inputmode="decimal" min="1" value="${r.count}" onchange="roomSet('${r.id}','count',this.value)"></td>
+      <td class="cv">${f0(c.q)}</td>
+      <td><input class="ti s${r.vO?' ov':''}" type="text" inputmode="decimal" step="0.1" value="${f1(c.V)}" onchange="roomSet('${r.id}','vO',this.value)"></td>
+      <td class="cv">${f3(c.Ak)}</td>
+      ${isD?`<td><input class="ti s${r.dO?' ov':''}" type="text" inputmode="decimal" step="25" value="${f0(c.d)}" onchange="roomSet('${r.id}','dO',this.value)"></td>`
+        :`<td class="cv">${f2(c.a)}</td><td class="cv">${f3(c.A)}</td>
+          <td><input class="ti s${r.wO?' ov':''}" type="text" inputmode="decimal" step="50" value="${f0(c.w)}" onchange="roomSet('${r.id}','wO',this.value)"></td>
+          <td><input class="ti s${r.hO?' ov':''}" type="text" inputmode="decimal" step="50" value="${f0(c.h)}" onchange="roomSet('${r.id}','hO',this.value)"></td>`}
+      <td>${f2(c.vAct)}</td>${isD?'':`<td class="cv">${f2(c.vFace)}</td>`}
+      <td><span class="badge ${c.ok?'b-ok':'b-red'}">${c.ok?'OK':'풍속 초과'}</span>${c.limited?' <span class="badge b-info" title="크기가 고정된 덕트에 들어가도록 기구를 낮고 넓게 다시 골랐습니다">덕트에 맞춤</span>':''}</td>
+      <td><button class="btn-x" title="삭제" onclick="roomDel('${r.id}')">✕</button></td></tr>`;
   }
-  html += `</tbody></table></div>`;
-  wrap.innerHTML = html;
+  h+=`</tbody></table></div><p class="note">파란 글씨 = 직접 입력한 값 (지우면 자동값으로 돌아감). W 를 바꾸면 H 가, H 를 바꾸면 W 가 필요 겉면적에 맞춰 자동으로 바뀝니다 (마지막에 바꾼 쪽이 고정). ${isD?'디퓨져는 넥 지름 개략값 — 카탈로그의 넥 풍속·NC·도달거리로 확정.':'크기는 필요 겉면적 이상 중 가장 작은 것 (아스펙트비 3 이하, 50 mm 단위).'}</p>`;
+  $('roomBox').innerHTML=h;
 }
-
-function onSqFlatChange(i) {
-  const v = parseFloat($(`sq-flat-sel-${i}`).value);
-  if (isNaN(v)||v<=0) delete S.sqFlat[i]; else S.sqFlat[i]=v;
-  render();
+function itemLabel(it,om){ if(it.t==='o') return om[it.k]?om[it.k].label:'?'; const z=zoneById(it.id); return z?z.name:'?'; }
+// ZONE 표시 순서 — 팬에서 가장 먼 ZONE 부터. 팬 연결 ZONE 에서 거꾸로 내려가며 깊은 갈래를 먼저 꺼낸다
+function zoneOrder(){
+  const roots=rootZones(), seen=new Set(), out=[];
+  const kids=z=>{ const L=[]; for(const r of (zoneById(z)||{rows:[]}).rows) for(const it of r.items) if(it.t==='z')L.push(it.id); return L; };
+  const ht=(z,d=0)=>d>50?0:Math.max(0,...kids(z).map(k=>1+ht(k,d+1)));
+  const walk=z=>{ if(seen.has(z))return; seen.add(z); kids(z).slice().sort((x,y)=>ht(y)-ht(x)).forEach(walk); out.push(z); };
+  const loose=S.zones.filter(z=>!roots.includes(z.id)&&!usedSets().z.has(z.id)).map(z=>z.id);
+  loose.forEach(walk); roots.forEach(walk);
+  for(const z of S.zones) if(!seen.has(z.id)) out.unshift(z.id);
+  return out.map(zoneById).filter(Boolean);
 }
-function onSqSideChange(i) {
-  const v = parseFloat($(`sq-side-sel-${i}`).value);
-  if (isNaN(v)||v<=0) delete S.sqSide[i]; else S.sqSide[i]=v;
-  const n = getUnitCount();
-  for (let j=i+1;j<=n;j++) delete S.sqFlat[j];
-  render();
-}
-
-/* ═══════════════════════════════════════
-   원형덕트 분기 테이블
-═══════════════════════════════════════ */
-function computeRdRow(i, n, unitFlow, vel, diffDiamSel, ceilH) {
-  const flow    = i===n ? getTotalFlow() : unitFlow*i;
-  const rowVel  = getRowVel(i, n, vel);
-  const minArea = (flow/3600) / rowVel;
-  const diamCalc = Math.sqrt(minArea * 4 / Math.PI);
-
-  const isTerminal = (i===1 && n>1);
-  let autoDiam = ceil05(diamCalc), corrected = false;
-  if (isTerminal && diffDiamSel>0 && autoDiam<diffDiamSel) {
-    autoDiam = diffDiamSel; corrected = true;
+function renderZones(){
+  if(!S.zones.length){ $('zoneBox').innerHTML=`<div class="empty">「실별 자동 구성」을 누르면 실마다 일렬 ZONE 과 MAIN 이 만들어집니다.<br>직접 만들려면 「+ ZONE 추가」.</div>`; return; }
+  const om=outletMap(), used=usedSets(), roots=rootZones(), round=S.shape==='round';
+  let h='';
+  for(const z of [...S.zones.filter(z=>!roots.includes(z.id)),...S.zones.filter(z=>roots.includes(z.id))]){
+    const res=calcZone(z.id), isRoot=roots.includes(z.id);
+    const parent=zoneParent(z.id), pRow=parent?parent.rows.findIndex(r=>r.items.some(it=>it.t==='z'&&it.id===z.id))+1:0;
+    const dep=zoneDepth(z.id), path=zonePath(z.id);
+    h+=`<div class="zone${isRoot?' zone-root':''}" id="zc-${z.id}" style="margin-left:${Math.min(dep,6)*18}px">
+      ${path?`<div class="zpath" style="padding:5px 12px 0">${path}</div>`:''}<div class="zone-h">
+      <input class="ti zn" value="${esc(z.name)}" onchange="zoneSet('${z.id}','name',this.value)">
+      ${isRoot?'<span class="badge b-info">팬 연결</span>':parent?`<span class="badge b-ok">→ ${esc(parent.name)} ${pRow}번 줄에 합류</span>`:'<span class="badge b-warn">미연결 — 다른 ZONE 의 줄에서 「+ 추가」로 붙이세요</span>'}
+      <span class="card-s">${f0(res.flow)} CMH · 기구 ${res.outlets.length}개</span>
+      <span style="flex:1"></span>
+      <span class="card-s">천장 속</span><input class="ti n${z.ceil?' ov':''}" type="text" inputmode="decimal" step="50" value="${f0(zCeil(z))}" title="이 ZONE 의 덕트 설치 가능 높이 (비우면 기본값)" onchange="zoneSet('${z.id}','ceil',this.value)">
+      <button class="btn" onclick="rowAdd('${z.id}')">+ 줄</button>
+      <button class="btn-x" title="ZONE 삭제" onclick="zoneDel('${z.id}')">✕</button></div>
+      <div class="tw"><table class="t"><thead><tr>
+        <th>순서</th><th>이 지점에서 합류</th><th>풍량<br>(CMH)</th><th>구간</th><th>풍속<br>(m/s)</th>
+        <th colspan="${round?1:2}">${round?'φ (mm)':'W × H (mm)'}</th><th>실제<br>(m/s)</th><th>검토</th><th></th></tr></thead><tbody>`;
+    z.rows.forEach((row,ri)=>{
+      const s=res.segs[ri];
+      const chips=row.items.map((it,ii)=>`<span class="chip${it.t==='z'?' z':''}">${esc(itemLabel(it,om))}<button onclick="itemDel('${z.id}','${row.id}',${ii})">✕</button></span>`).join('');
+      const optsO=outletList().filter(o=>!used.o.has(o.key)).map(o=>`<option value="o|${o.key}">${esc(o.label)}</option>`).join('');
+      const optsZ=S.zones.filter(x=>x.id!==z.id&&!used.z.has(x.id)&&!zoneContains(x.id,z.id)).map(x=>`<option value="z|${x.id}">${esc(x.name)}</option>`).join('');
+      const addSel=(optsO||optsZ)?`<select class="add-sel" onchange="itemAdd('${z.id}','${row.id}',this.value)"><option value="">+ 추가</option>${optsO?`<optgroup label="기구">${optsO}</optgroup>`:''}${optsZ?`<optgroup label="ZONE">${optsZ}</optgroup>`:''}</select>`:'';
+      const ctl=`<button class="btn-x" title="말단 쪽으로" onclick="rowMove('${z.id}','${row.id}',-1)">↑</button><button class="btn-x" title="팬 쪽으로" onclick="rowMove('${z.id}','${row.id}',1)">↓</button><button class="btn-x" title="줄 삭제" onclick="rowDel('${z.id}','${row.id}')">✕</button>`;
+      const br=`<button class="add-br" title="이 지점에서 갈라지는 새 ZONE 을 만들어 붙임" onclick="rowBranch('${z.id}','${row.id}')">+ 갈래</button>`;
+      const lab=ri===0?`${ri+1}<div class="card-s">끝</div>`:`${ri+1}`;
+      if(!s||s.empty){ h+=`<tr><td>${lab}</td><td class="l"><div class="chips">${chips}${addSel}${br}</div></td><td colspan="${round?6:7}" class="cv">기구 또는 ZONE 을 추가하세요</td><td style="white-space:nowrap">${ctl}</td></tr>`; return; }
+      const chk=segChecks(s).map(c=>`<span class="badge ${c[0]}">${c[1]}</span>`).join(' ')||'<span class="badge b-ok">OK</span>';
+      h+=`<tr class="${s.type==='main'?'seg-main':''}"><td>${lab}</td><td class="l"><div class="chips">${chips}${addSel}${br}</div></td>
+        <td><b>${f0(s.flow)}</b></td><td>${SEG_NAME[s.type]}</td>
+        <td><input class="ti s${row.vO?' ov':''}" type="text" inputmode="decimal" step="0.1" value="${f1(s.V)}" onchange="rowSet('${z.id}','${row.id}','vO',this.value)"></td>
+        ${round?`<td><input class="ti s${row.dO?' ov':''}" type="text" inputmode="decimal" step="25" value="${f0(s.d)}" onchange="rowSet('${z.id}','${row.id}','dO',this.value)"></td>`
+          :`<td><input class="ti s${row.wO?' ov':''}" type="text" inputmode="decimal" step="50" value="${f0(s.w)}" onchange="rowSet('${z.id}','${row.id}','wO',this.value)"></td>
+            <td><input class="ti s${row.hO?' ov':''}" type="text" inputmode="decimal" step="50" value="${f0(s.h)}" onchange="rowSet('${z.id}','${row.id}','hO',this.value)"></td>`}
+        <td>${f2(s.vAct)}</td><td style="white-space:nowrap">${chk}</td><td style="white-space:nowrap">${ctl}</td></tr>`;
+    });
+    if(!z.rows.length) h+=`<tr><td colspan="10" class="cv">「+ 줄」로 시작하세요</td></tr>`;
+    h+=`</tbody></table></div></div>`;
   }
-
-  const diamSel = S.rdDuct[i]!=null ? S.rdDuct[i] : autoDiam;
-  const selArea = Math.PI * Math.pow(diamSel/2, 2);
-  const areaOk  = selArea >= minArea - 1e-6;
-
-  let statusClass, statusText;
-  if      (diamSel > ceilH)        { statusClass='danger';  statusText='천정고 초과 — 사각덕트 전환 필요'; }
-  else if (diamSel > ceilH - 0.15) { statusClass='warning'; statusText='천정고 근접'; }
-  else                              { statusClass='ok';      statusText='OK'; }
-
-  return { flow, rowVel, minArea, diamCalc, diamSel, selArea, areaOk,
-    corrected: corrected && S.rdDuct[i]==null,
-    statusClass, statusText, ductOverride: S.rdDuct[i]!=null };
+  h=`<div class="zl"><div class="zl-p"><div class="diag-h"><b>덕트 계통도</b><span class="card-s">왼쪽 말단 → 오른쪽 팬 · 선 굵기 = 덕트 크기 · ZONE 이름을 누르면 입력으로 이동</span></div>${diagramSVG()}</div><div class="zl-p">${h}</div></div>`;
+  h+=`<p class="note">한 줄의 덕트 = 그 줄까지 합류한 기구 전체를 싣고 다음 줄(팬 쪽)으로 가는 구간. 1번 줄 = 그 ZONE 의 제일 끝. 구간 판정 — 기구 1개 = 말단 · 한 실 2개 이상 = 분기 · 두 실 이상 = 메인. 풍속은 그 구간이 담당하는 실 중 가장 낮은 값. 상류 덕트는 하류보다 작아지지 않게 맞춤. W 를 바꾸면 H 가, H 를 바꾸면 W 가 필요 면적에 맞춰 자동으로 바뀌고 (마지막에 바꾼 쪽이 고정), 그 변경은 팬 쪽 구간으로 이어집니다. 팬 쪽을 하류보다 작게 넣으면 「치수 역전」.</p>`;
+  h+=segTableHTML();
+  $('zoneBox').innerHTML=h;
 }
-
-function renderRdDuctTable(usage, unitFlow) {
-  const wrap = $('rd-duct-table-wrap'), n = getUnitCount();
-  const vel  = getRdVel(usage);
-  const ceilH       = getCeilH();
-  const diffDiamSel = parseFloat($('rd-diam-sel').value) || 0;
-  if (n<1) { wrap.innerHTML=''; return; }
-
-  const rows = [];
-  for (let i=1;i<=n;i++) rows.push(computeRdRow(i,n,unitFlow,vel,diffDiamSel,ceilH));
-
-  let html = `<div class="duct-table-wrap"><table class="duct-table">
-  <thead><tr>
-    <th style="text-align:left">구간</th>
-    <th>풍량<br><span style="font-weight:400">(CMH)</span></th>
-    <th>풍속<br><span style="font-weight:400">(m/s)</span></th>
-    <th>최소설치면적<br><span style="font-weight:400">(m²)</span></th>
-    <th>지름 계산값<br><span style="font-weight:400">(m)</span></th>
-    <th>지름 선정값<br><span style="font-weight:400">(m)</span></th>
-    <th>선정면적<br><span style="font-weight:400">(m²)</span></th>
-    <th>면적비교</th>
-    <th>상태</th>
-  </tr></thead><tbody>`;
-
-  for (let i=1;i<=n;i++) {
-    const r = rows[i-1];
-    const corrTag = r.corrected
-      ? `<span class="warn-duct">디퓨져 지름 기준 보정됨</span>` : '';
-
-    html += `<tr class="${i===n?'row-main':''}">
-      <td class="seg-label">${getRowLabel(i,n)}</td>
-      <td>${r.flow.toLocaleString('ko-KR',{maximumFractionDigits:0})}</td>
-      <td>${r.rowVel.toFixed(1)}</td>
-      <td class="cv">${r.minArea.toFixed(4)}</td>
-      <td class="cv">${r.diamCalc.toFixed(3)}</td>
-      <td><input type="number" class="duct-input${r.ductOverride?' user-override':''}"
-            id="rd-duct-sel-${i}" step="0.05" min="0.05" value="${r.diamSel.toFixed(2)}"
-            onchange="onRdDuctChange(${i})">${corrTag}</td>
-      <td>${r.selArea.toFixed(3)}</td>
-      <td><span class="badge badge-${r.areaOk?'ok':'danger'}">${r.areaOk?'OK':'부족'}</span></td>
-      <td><span class="badge badge-${r.statusClass}">${r.statusText}</span></td>
-    </tr>`;
-  }
-  html += `</tbody></table></div>`;
-  wrap.innerHTML = html;
+const mm=v=>{ const r=Math.round(v*10)/10; return Number.isInteger(r)?f0(r):r.toFixed(1); };
+function segTableHTML(){
+  const round=S.shape==='round'; let rows='';
+  for(const z of zoneOrder()){ const res=calcZone(z.id);
+    res.segs.forEach((s,i)=>{ if(s.empty)return;
+      const dW=(round?s.d:s.w)+2*s.plate, dH=(round?s.d:s.h)+2*s.plate;
+      const chk=segChecks(s).map(c=>`<span class="badge ${c[0]}">${c[1]}</span>`).join(' ')||'<span class="badge b-ok">OK</span>';
+      rows+=`<tr class="${s.type==='main'?'seg-main':''}"><td class="l"><b>${esc(z.name)}</b></td><td>${i+1}</td><td>${SEG_NAME[s.type]}</td><td>${f0(s.flow)}</td>
+        <td><b>${s.dim}</b></td><td>${f2(s.vAct)}</td>${round?'':`<td>${f2(s.ar)}</td>`}<td>${s.plate}</td><td>${s.ins}</td>
+        <td>${mm(dW)}</td><td>${mm(s.outW)}</td><td><b>${mm(s.totW)}</b></td>
+        <td>${mm(dH)}</td><td>${mm(s.outH)}</td><td><b>${mm(s.totH)}</b></td><td>${f0(s.ceil)}</td><td style="white-space:nowrap">${chk}</td></tr>`; }); }
+  if(!rows) return '';
+  return `<div style="margin-top:16px"><b>구간별 덕트 치수 (도면용)</b><div class="tw" style="margin-top:6px"><table class="t"><thead>
+    <tr><th rowspan="2">ZONE</th><th rowspan="2">순서</th><th rowspan="2">구간</th><th rowspan="2">풍량<br>(CMH)</th><th rowspan="2">덕트<br>(안치수)</th><th rowspan="2">실제<br>(m/s)</th>${round?'':'<th rowspan="2">아스펙트비</th>'}<th rowspan="2">판두께</th><th rowspan="2">보온</th>
+      <th colspan="3">폭 (mm)</th><th colspan="3">높이 (mm)</th><th rowspan="2">천장 속</th><th rowspan="2">검토</th></tr>
+    <tr><th>덕트</th><th>+보온</th><th>+보온+바운더리</th><th>덕트</th><th>+보온</th><th>+보온+바운더리</th></tr></thead><tbody>${rows}</tbody></table></div>
+    <p class="note">덕트 = 안치수 + 판두께 × 2 · +보온 = 보온 두께 × 2 추가 · +바운더리 = 각 면 여유 추가 (폭 = 좌 + 우, 높이 = 위 + 아래). 천장 속 판정은 높이 +보온+바운더리 기준.</p></div>`;
 }
-
-function onRdDuctChange(i) {
-  const v = parseFloat($(`rd-duct-sel-${i}`).value);
-  if (isNaN(v)||v<=0) delete S.rdDuct[i]; else S.rdDuct[i]=v;
-  render();
-}
-
-/* ─── 저장 / 불러오기 ─── */
-function saveJSON() {
-  const proj = $('projectName').value || '프로젝트';
-  const data = {
-    projectName: proj, deviceType: getDevice(), usageType: getUsage(),
-    totalFlow: $('totalFlow').value, unitCount: $('unitCount').value,
-    ceilHeight: $('ceilHeight').value, exhaustFlow: $('exhaustFlow').value,
-    overrides: JSON.parse(JSON.stringify(S)),
-  };
-  const a = document.createElement('a');
-  a.href = URL.createObjectURL(new Blob([JSON.stringify(data,null,2)],{type:'application/json'}));
-  a.download = `${proj}_덕트.json`;
-  a.click();
-}
-
-function loadJSON(e) {
-  const file = e.target.files[0]; if (!file) return;
-  const reader = new FileReader();
-  reader.onload = ev => {
-    try {
-      const d = JSON.parse(ev.target.result);
-      $('projectName').value = d.projectName||'';
-      $('deviceType').value  = d.deviceType ||'inline';
-      $('usageType').value   = d.usageType  ||'residential';
-      $('totalFlow').value   = d.totalFlow  ||'';
-      $('unitCount').value   = d.unitCount  ||'';
-      $('ceilHeight').value  = d.ceilHeight ||'';
-      $('exhaustFlow').value = d.exhaustFlow||'';
-      if (d.overrides) {
-        Object.assign(S, d.overrides);
-        if (!S.velSq) S.velSq = { outlet:null,terminal:null,branch:null,main:null };
-        if (!S.velRd) S.velRd = { outlet:null,terminal:null,branch:null,main:null };
+// ── 덕트 계통도 (SVG) — 왼쪽 말단 → 오른쪽 팬. 기구는 줄 위로, 합류 ZONE 은 아래로 붙는다
+function diagramSVG(){
+  const roots=rootZones(); if(!roots.length) return '<div class="empty">ZONE 을 구성하면 그림이 나타납니다.</div>';
+  const STEP=104, BAND=74, om=outletMap(), el=[], txt=[];
+  let maxA=0; for(const z of S.zones) for(const s of calcZone(z.id).segs) if(!s.empty) maxA=Math.max(maxA,s.area);
+  const sw=a=>2.5+9*Math.sqrt(a/(maxA||1)), col={main:'#1d4ed8',branch:'#0f766e',term:'#64748b'};
+  const kids=row=>row.items.filter(i=>i.t==='z').map(i=>i.id);
+  const ht=(zid,d=0)=>{ const z=zoneById(zid); if(!z||d>50) return BAND; let h=BAND; for(const r of z.rows) for(const k of kids(r)) h+=ht(k,d+1); return h; };
+  function lay(zid,xJ,y,d=0){
+    const z=zoneById(zid); if(!z||d>50) return; const res=calcZone(zid), n=z.rows.length; let cy=y+BAND;
+    const xs=z.rows.map((_,i)=>xJ-(n-i)*STEP);
+    z.rows.forEach((row,i)=>{ const s=res.segs[i], x0=xs[i], x1=i<n-1?xs[i+1]:xJ;
+      if(s&&!s.empty){
+        el.push(`<line x1="${x0}" y1="${y}" x2="${x1}" y2="${y}" stroke="${col[s.type]}" stroke-width="${sw(s.area).toFixed(1)}" stroke-linecap="round"/>`);
+        txt.push(`<text x="${(x0+x1)/2}" y="${y-9}" class="dt-s" text-anchor="middle">${s.dim}</text><text x="${(x0+x1)/2}" y="${y+16}" class="dt-f" text-anchor="middle">${f0(s.flow)}</text>`);
       }
-      onDeviceChange();
-    } catch { alert('파일 불러오기 실패: JSON 형식을 확인하세요.'); }
-  };
-  reader.readAsText(file);
-  e.target.value = '';
-}
-
-function updateCeilWarn() {
-  const v  = parseFloat($('ceilHeight').value);
-  const el = $('ceil-warn');
-  if (!el) return;
-  if (isNaN(v) || v === 0) { el.style.display = 'none'; return; }
-  if (v > 1.5) {
-    el.className = 'field-warn warning';
-    el.textContent = '⚠ 단위 확인 — 층고가 아닌 덕트 가능 높이를 입력하세요';
-    el.style.display = '';
-  } else if (v < 0.2) {
-    el.className = 'field-warn danger';
-    el.textContent = '너무 낮음';
-    el.style.display = '';
-  } else {
-    el.style.display = 'none';
+      const os=row.items.filter(it=>it.t==='o').map(it=>itemLabel(it,om));
+      if(os.length){ el.push(`<line x1="${x0}" y1="${y}" x2="${x0}" y2="${y-26}" stroke="#94a3b8" stroke-width="1.5"/><rect x="${x0-9}" y="${y-33}" width="18" height="7" rx="1.5" fill="#fff" stroke="#475569" stroke-width="1.2"/>`);
+        txt.push(`<text x="${x0}" y="${y-38}" class="dt-o" text-anchor="middle">${esc(os.join(', '))}</text>`); }
+      for(const k of kids(row)){ el.push(`<line x1="${x0}" y1="${cy}" x2="${x0}" y2="${y}" stroke="#a78bfa" stroke-width="1.5" stroke-dasharray="4 3"/>`); lay(k,x0,cy,d+1); cy+=ht(k); }
+      el.push(`<circle cx="${x0}" cy="${y}" r="3" fill="#fff" stroke="#334155" stroke-width="1.2"/>`);
+    });
+    txt.push(`<text x="${(xs[0]??xJ)-10}" y="${y+4}" class="dt-z" text-anchor="end" style="cursor:pointer" onclick="document.getElementById('zc-${zid}').scrollIntoView({behavior:'smooth',block:'center'})">${esc(z.name)}</text>`);
   }
+  const L=calcLouver(roots.length?calcZone(roots[0]).flow:0), ex=S.mode==='exhaust';
+  let y=60; for(const r of roots){
+    lay(r,0,y);
+    el.push(`<line x1="0" y1="${y}" x2="20" y2="${y}" stroke="#1d4ed8" stroke-width="3"/><rect x="20" y="${y-16}" width="56" height="32" rx="6" fill="#eff6ff" stroke="#1d4ed8"/><line x1="76" y1="${y}" x2="110" y2="${y}" stroke="#334155" stroke-width="3"/><rect x="110" y="${y-22}" width="14" height="44" fill="#f1f5f9" stroke="#334155"/>`);
+    txt.push(`<text x="48" y="${y+4}" class="dt-z" text-anchor="middle" style="fill:#1d4ed8">팬</text><text x="117" y="${y-28}" class="dt-s" text-anchor="middle">${ex?'배기':'외기'} 루버</text><text x="117" y="${y+36}" class="dt-f" text-anchor="middle">${f0(L.w)}×${f0(L.h)}</text>`);
+    y+=ht(r)+20; }
+  // 왼쪽 끝 계산 — 가장 긴 줄기의 시작점까지
+  let minX=0; const ext=(zid,xJ,d=0)=>{ const z=zoneById(zid); if(!z||d>50)return; const n=z.rows.length; minX=Math.min(minX,xJ-n*STEP-8*z.name.length-20);
+    z.rows.forEach((r,i)=>kids(r).forEach(k=>ext(k,xJ-(n-i)*STEP,d+1))); };
+  roots.forEach(r=>ext(r,0));
+  const W=-minX+150, H=y;
+  return `<svg class="diag" style="width:100%;max-width:${W}px;height:auto" viewBox="${minX} 0 ${W} ${H}" xmlns="http://www.w3.org/2000/svg">${el.join('')}${txt.join('')}</svg>`;
+}
+function zoneParent(id){ return S.zones.find(p=>p.rows.some(r=>r.items.some(it=>it.t==='z'&&it.id===id))); }
+function zoneDepth(id){ let d=0,p=zoneParent(id); while(p&&d<50){ d++; p=zoneParent(p.id); } return d; }
+function zonePath(id){ const L=[]; let p=zoneParent(id),d=0; while(p&&d<50){ L.unshift(esc(p.name)); p=zoneParent(p.id); d++; } return L.length?'팬 ‹ '+L.join(' ‹ '):''; }
+function rootZones(){ const used=usedSets(); return S.zones.filter(z=>!used.z.has(z.id)&&z.rows.some(r=>r.items.length)).map(z=>z.id); }
+function renderSummary(){
+  const roots=rootZones(), om=outletMap(), used=usedSets(), warns=[];
+  const totalRoom=S.rooms.reduce((s,r)=>s+(+r.flow||0),0);
+  const unused=outletList().filter(o=>!used.o.has(o.key));
+  if(!S.rooms.length){ $('sumBox').innerHTML='<div class="empty">실이 없습니다.</div>'; return; }
+  if(unused.length) warns.push(['wi-warn',`ZONE 에 연결되지 않은 기구 ${unused.length}개: ${unused.slice(0,12).map(o=>esc(o.label)).join(', ')}${unused.length>12?' …':''}`]);
+  if(roots.length>1) warns.push(['wi-red',`팬에 연결된 ZONE 이 ${roots.length}개입니다 (${roots.map(id=>esc(zoneById(id).name)).join(', ')}). 한 계통 = 팬 1대이면 MAIN ZONE 하나로 합류시키세요.`]);
+  for(const r of S.rooms){ const c=calcTerm(r); if(!c.ok) warns.push(['wi-red',`${esc(r.name)} — 선정 ${KIND_NAME[c.kind]} 크기에서 유효풍속 ${f2(c.vAct)} m/s 가 기준 ${f1(c.V)} 을 넘습니다.`]); }
+  for(const z of S.zones){ const res=calcZone(z.id); res.segs.forEach((s,i)=>{ if(s.empty)return;
+    if(s.totH>s.ceil) warns.push(['wi-red',`${esc(z.name)} ${i+1}번 구간 ${s.dim} — 필요 높이 ${f0(s.totH)} mm 가 천장 속 ${f0(s.ceil)} mm 를 넘습니다. 높이를 낮추고 폭을 넓히거나 분할 검토.`]);
+    if(s.rev) warns.push(['wi-red',`${esc(z.name)} ${i+1}번 구간 ${s.dim} — 직접 입력한 치수가 하류(앞 줄·합류 ZONE)보다 작습니다 (치수 역전).`]);
+    if(s.mountBad) warns.push(['wi-red',`${esc(z.name)} ${i+1}번 구간 ${s.dim} — 이 줄의 기구가 덕트에 여유 있게 들어가지 않습니다. 기구 크기를 직접 정했다면 자동으로 되돌리거나 덕트를 키우세요 (${{bottom:'폭 ≥ 기구 단변 + 여유 × 2',side:'높이 ≥ 기구 높이 + 여유 × 2'}[S.mount]||'지름 ≥ 기구 + 여유 × 2'}).`]);
+    if(s.ar>4+1e-9) warns.push(['wi-warn',`${esc(z.name)} ${i+1}번 구간 ${s.dim} — 아스펙트비 ${f2(s.ar)} (4 초과). 풍속 상향·경로 변경·분할 검토.`]);
+    if(s.area>=0.6) warns.push(['wi-warn',`${esc(z.name)} ${i+1}번 구간 ${s.dim} — 단면적 ${f2(s.area)} m² ≥ 0.6, 내진 대상 (AC-079).`]); }); }
+  const root=roots.length?calcZone(roots[0]):null;
+  const Q=root?root.flow:totalRoom;
+  if(root&&Math.abs(root.flow-totalRoom)>0.5&&!unused.length) warns.push(['wi-warn',`팬 연결 ZONE 풍량 ${f0(root.flow)} 이 실 풍량 합계 ${f0(totalRoom)} 과 다릅니다.`]);
+  const L=calcLouver(Q), m=root&&root.last;
+  const ex=S.mode==='exhaust';
+  // 기준: KDS 31 25 30 4.5 — 팬 흡입측 직관 ≥ 날개지름 × 4 (또는 ×1 + 터닝베인 엘보), 토출측 ≥ 출구 장변 × 1.5
+  const longSide=m?(S.shape==='round'?m.d:Math.max(m.w,m.h)):0;
+  // 루버 ↔ 덕트 리듀서 길이 (한쪽 기준): 급기는 루버→덕트 축소 30°, 배기는 덕트→루버 확대 15°
+  let red='';
+  if(m){ const dw=S.shape==='round'?m.d:m.w, dh=S.shape==='round'?m.d:m.h; const a=Math.max((L.w-dw)/2,(L.h-dh)/2,0);
+    const len=ex?a/Math.tan(15*Math.PI/180):a/Math.tan(30*Math.PI/180);
+    red=`<div class="row"><span>루버 ↔ 덕트 ${ex?'확대 (한쪽 15°)':'축소 (한쪽 30°)'}</span><span>${f0(len)} mm 이상${len>1000?' · 챔버 권장':''}</span></div>`; }
+  const sq=`<div class="sum">
+    <div class="sbox"><h4>팬 (${{inline:'인라인덕트팬',hrv:'전열교환기',ceiling:'천정형팬',ahu:'공조기'}[S.device]})</h4>
+      <div class="big">${f0(Q)} CMH</div>
+      <div class="row"><span>실 풍량 합계</span><span>${f0(totalRoom)} CMH</span></div>
+      ${m?`<div class="row"><span>팬 연결 덕트 (${esc(zoneById(roots[0]).name)})</span><span><b>${m.dim}</b> · ${f2(m.vAct)} m/s</span></div>
+      <div class="row"><span>${ex?'흡입측':'토출측'} 직관 (장변 × 1.5)</span><span>${f0(longSide*1.5)} mm 이상</span></div>
+      <div class="row"><span>${ex?'토출측':'흡입측'} 직관</span><span>팬 날개지름 × 4 이상</span></div>`:'<div class="row"><span>ZONE 미구성</span><span>—</span></div>'}
+      <p class="note">팬 정압은 덕트 길이·부속이 정해진 뒤 계산 (다음 단계).</p></div>
+    <div class="sbox"><h4>${ex?'배기 루버':'외기 루버'} — KDS 31 25 30 4.4(${ex?2:1})</h4>
+      <div class="row"><span>풍량 (CMH)</span><span><b>${f0(Q)}</b></span></div>
+      <div class="row"><span>SIZE</span><span><b>${f0(L.w)} × ${f0(L.h)}</b></span></div>
+      <div class="row"><span>OPENING SIZE</span><span><b>${f0(L.w+50)} × ${f0(L.h+50)}</b></span></div>
+      <div class="row"><span>VELOCITY</span><span><b>${f2(L.vFace)} m/s</b></span></div>
+      <div class="row" style="border-top:1px dashed var(--border);margin-top:4px;padding-top:6px"><span>풍량 (L/s)</span><span>${f0(L.Ls)}</span></div>
+      <div class="row"><span>적용 식</span><span>${L.rule}</span></div>
+      <div class="row"><span>필요 전면면적</span><span>${f3(L.A)} m²${L.adj?' (개구율 보정)':''}</span></div>
+      <div class="row"><span>선정 면적</span><span>${f3(L.area)} m²</span></div>
+      ${red}
+      <div class="row no-print"><span>크기 직접 입력</span><span><input class="ti s${S.louverO.w?' ov':''}" type="text" inputmode="decimal" step="50" value="${f0(L.w)}" onchange="louverSet('w',this.value)"> × <input class="ti s${S.louverO.h?' ov':''}" type="text" inputmode="decimal" step="50" value="${f0(L.h)}" onchange="louverSet('h',this.value)"></span></div>
+      <span class="badge ${L.ok?'b-ok':'b-red'}">${L.ok?'면적 OK':'면적 부족'}</span>
+      ${ex?'<p class="note">배기 루버 식은 KDS 원문에 구간·기호 오탈자가 있어 재검증 필요. 팬 뒤 양압 배기덕트는 거실 천장 속에 두지 않음 (KDS 1.6(6)).</p>':''}</div>
+    <div class="sbox"><h4>보온 · 높이</h4>
+      <div class="row"><span>보온 두께</span><span>${insT()} mm (${S.insOff?'없음':INS[S.insGrade][1].split(' ')[0]+'등급'+(S.epi?' +20%':'')})</span></div>
+      <div class="row"><span>덕트 설치 가능 높이</span><span>${f0(S.ceil)} mm</span></div>
+      <div class="row"><span>덕트 높이 상한 (소형 기준)</span><span>${f0(hMax())} mm</span></div>
+      <p class="note">높이 상한 = 설치 가능 높이 − 위 45 − 아래 55 − 보온 × 2 − 판두께 × 2. 최종 판정은 구간별 필요 공간으로.</p></div>
+  </div>`;
+    const wl=warns.length?warns.map(w=>`<div class="warn-item ${w[0]}">${w[1]}</div>`).join(''):'<div class="warn-item wi-ok">검토사항 없음</div>';
+  $('sumBox').innerHTML=sq+`<div style="margin-top:14px"><b>검토사항</b><div class="warn-list" style="margin-top:6px">${wl}</div></div>`;
+}
+function renderRef(){
+  if($('refBox').dataset.done) return; $('refBox').dataset.done=1;
+  $('refBox').innerHTML=`
+  <h4>풍속 기준 (m/s) — 덕트는 단면 기준, 기구는 유효풍속</h4>
+  <div class="tw"><table class="t"><thead><tr><th>용도</th><th>메인</th><th>분기</th><th>말단</th><th>취출구</th><th>흡입구</th></tr></thead><tbody>
+  ${USAGE.map(u=>`<tr><td class="l">${u[1]}</td><td>${u[2]}</td><td>${u[3]}</td><td>${u[4]}</td><td>${u[5]}</td><td>${u[6]}</td></tr>`).join('')}</tbody></table></div>
+  <ul style="margin-top:6px"><li>취출구·흡입구: ASHRAE HVAC Applications 소음 장 「유효개구면 최대 권장풍속」(RC 25~45) 계열. 학회 「건축기계설비 설계기준」 표 3.53 허용 취출풍속 상한(주거 4 · 사무 일반 6 등) 이내.</li>
+  <li>환기 전용 계통의 실내 흡입구는 학회 표 4.6 의 2.0 m/s 를 우선.</li>
+  <li>덕트: 설계 기본값. KDS 31 25 30 4.1(12) 주덕트 15 m/s 이하 = 저속덕트.</li>
+  <li>최종 규격은 제조사 성능자료(NC · 도달거리 · 압력손실)로 확인.</li></ul>
+  <h4>판두께 (mm) — 교재값, KCS 31 20 20 원문 대조 필요</h4>
+  <p>각형 장변: 450 이하 0.5 · 460~750 0.6 · 760~1,500 0.8 · 1,510~2,200 1.0 · 2,210 이상 1.2<br>원형(스파이럴) 지름: 200 이하 0.5 · 210~600 0.6 · 610~800 0.8 · 810~1,000 1.0</p>
+  <h4>보온 두께 — KCS 31 20 05 (덕트 내부 10~40℃, RH 75% 미만)</h4>
+  <p>열전도율 등급 가 20 · 나 25 · 다 30 · 라 35 mm. 에너지절약설계기준 EPI 7번 적용 시 ×1.2 후 5 mm 올림. 외기·배기·다습 구간은 결로 검토 별도. 주방배기는 불연재(화기 50 / 일반 25 이상), 제연덕트 25.</p>
+  <h4>각 면 여유 (보온 바깥에서, mm) — 어림값</h4>
+  <p>각형 장변 750 이하: 위 45 · 아래 55 · 좌우 75 / 760~1,500: 55 · 75 · 95 / 1,500 초과: 65 · 95 · 115<br>원형 600 이하: 위 40 · 아래 20 · 좌우 30 / 600 초과: 50 · 40 · 50<br>위 = 플랜지·볼트·작업 틈 · 아래 = 플랜지·지지앵글 · 좌우 = 플랜지·행거 볼트</p>
+  <h4>덕트 ↔ 기구 맞춤</h4><p>직부(하부·측면)이면 기구가 붙는 줄의 덕트 안치수 ≥ 기구 + 여유 × 2 (기본 한쪽 25 mm). 덕트가 자동이면 덕트를 키우고, 덕트 크기를 직접 정했거나 팬 쪽 고정 크기에 묶였으면 그 실의 기구를 낮고 넓게 다시 고른다. 크기 변경은 팬 쪽으로만 전파된다 — 말단·분기를 키우면 그보다 팬 쪽 구간이 따라 커지고, 팬 쪽을 줄여도 말단 쪽은 바뀌지 않으며 하류보다 작으면 「치수 역전」. 폭만 직접 정하면 높이를, 높이만 정하면 폭을 필요 면적에 맞춰 다시 구한다.</p>
+  <h4>아스펙트비</h4><p>학회 설계기준 6장 (8) 「원칙적으로 4:1 이하」. 3 이하 양호 · 3~4 주의 · 4 초과 분할 검토. 4 에서 마찰 약 1.25 배.</p>
+  <h4>루버 — KDS 31 25 30 4.4</h4><p>외기: 3,300 L/s 이상 전면풍속 2.0 m/s 이하, 미만 A = 0.4 + 0.00036Q · 배기: 2.5 m/s / A = 0.4 + 0.00025Q (원문 오탈자 재검증 필요) · 개구율 45% 이하 별도 산정.</p>
+  <h4>팬 · 부속 — KDS 31 25 30</h4><p>흡입측 직관 날개지름 × 4 (또는 × 1 + 터닝베인 엘보) · 토출측 직관 출구 장변 × 1.5 · 엘보 곡률반경 1.5 이상 · 분지덕트 VD · 플렉시블 2.0 m 이하. 축소 한쪽 30° · 확대 한쪽 15° (KCS 31 20 20 3.1.2, 원문 대조 필요).</p>`;
 }
 
-/* ─── 초기화 ─── */
-onDeviceChange();
+// ── 이벤트 ───────────────────────────────────────────────────
+function setSys(k,v){
+  if(['ceil','regOpen','grilleOpen','louverOpen','fitGap'].includes(k)){ const x=num(v); if(x==null||x<0||(x===0&&k!=='fitGap')) return render(); S[k]=x; }
+  else S[k]=v;
+  if(S.shape==='round'&&S.mount==='side') S.mount='bottom';
+  render();
+}
+function roomAdd(){ const n=S.rooms.length; S.rooms.push({id:uid('r'),name:String.fromCharCode(65+(n%26))+(n>=26?n:''),usage:S.rooms[n-1]?.usage||'off',flow:500,count:2,vO:null,wO:null,hO:null,dO:null}); render(); }
+function roomDel(id){ const r=S.rooms.find(r=>r.id===id); if(!r)return; ask(`「${r.name}」 실을 삭제할까요? ZONE 에서도 빠집니다.`,()=>{ S.rooms=S.rooms.filter(r=>r.id!==id); render(); }); }
+function roomSet(id,k,v){
+  const r=S.rooms.find(r=>r.id===id); if(!r) return;
+  if(k==='name'||k==='usage'){ r[k]=v; if(k==='usage')r.vO=null; }
+  else if(k==='count'){ r.count=Math.max(1,parseInt(v)||1); }
+  else if(k==='flow'){ r.flow=Math.max(0,num(v,0)); }
+  else { const x=num(v); r[k]=(x==null||x<=0)?null:x;
+    // W·H 는 마지막에 바꾼 쪽만 고정하고 다른 쪽은 자동으로 되돌린다
+    if(k==='wO')r.hO=null; if(k==='hO')r.wO=null; }
+  render();
+}
+const Z=id=>zoneById(id), R=(z,rid)=>z&&z.rows.find(r=>r.id===rid);
+function newRow(items=[]){ return {id:uid('w'),items,vO:null,wO:null,hO:null,dO:null}; }
+function zoneAdd(){ S.zones.unshift({id:uid('z'),name:'ZONE-'+(S.zones.length+1),rows:[newRow()]}); render(); }
+function zoneDel(id){ const z=Z(id); if(!z)return; ask(`「${z.name}」 ZONE 을 삭제할까요? 이 ZONE 에 합류하던 갈래 ZONE 은 「미연결」로 남습니다.`,()=>{ S.zones=S.zones.filter(x=>x.id!==id); render(); }); }
+function zoneSet(id,k,v){ const z=Z(id); if(!z)return; if(k==='ceil'){ const x=num(v); z.ceil=(x==null||x<=0||x===S.ceil)?null:x; } else z[k]=v; render(); }
+// 이 줄에서 갈라지는 새 ZONE — 이름은 「상위이름-번호」, 만들자마자 이 줄에 합류시킨다
+function rowBranch(zid,rid){
+  const z=Z(zid), r=R(z,rid); if(!r) return;
+  let k=1; while(S.zones.some(x=>x.name===z.name+'-'+k)) k++;
+  const nz={id:uid('z'),name:z.name+'-'+k,rows:[newRow()]};
+  S.zones.splice(S.zones.indexOf(z),0,nz); r.items.push({t:'z',id:nz.id}); render();
+  const el=$('zc-'+nz.id); if(el) el.scrollIntoView({behavior:'smooth',block:'center'});
+  toast(`「${nz.name}」 을 만들어 ${z.name} ${z.rows.indexOf(r)+1}번 줄에 붙였습니다. 끝(말단) 기구부터 추가하세요.`);
+}
+function sortZones(){ S.zones=zoneOrder(); render(); toast('팬에서 먼 ZONE 부터 정렬했습니다.'); }
+function rowAdd(zid){ const z=Z(zid); if(z){ z.rows.push(newRow()); render(); } }
+function rowDel(zid,rid){ const z=Z(zid); if(z){ z.rows=z.rows.filter(r=>r.id!==rid); render(); } }
+function rowMove(zid,rid,d){ const z=Z(zid); if(!z)return; const i=z.rows.findIndex(r=>r.id===rid), j=i+d; if(i<0||j<0||j>=z.rows.length)return; [z.rows[i],z.rows[j]]=[z.rows[j],z.rows[i]]; render(); }
+function rowSet(zid,rid,k,v){ const r=R(Z(zid),rid); if(!r)return; const x=num(v); r[k]=(x==null||x<=0)?null:x;
+  if(k==='wO')r.hO=null; if(k==='hO')r.wO=null;   // 마지막에 바꾼 쪽만 고정, 다른 쪽은 자동
+  render(); }
+function itemAdd(zid,rid,val){ const r=R(Z(zid),rid); if(!r||!val)return; const [t,id]=val.split('|'); r.items.push(t==='o'?{t:'o',k:id}:{t:'z',id}); render(); }
+function itemDel(zid,rid,i){ const r=R(Z(zid),rid); if(!r)return; r.items.splice(i,1); render(); }
+function louverSet(k,v){ const x=num(v); S.louverO[k]=(x==null||x<=0)?null:x; S.louverO[k==='w'?'h':'w']=null; render(); }   // 마지막에 바꾼 쪽만 고정
+
+// 실마다 기구를 일렬로 잇는 ZONE 을 만들고, 실이 둘 이상이면 MAIN 에서 합류
+function autoZones(force){
+  if(!S.rooms.length) return toast('먼저 실을 추가하세요.');
+  if(S.zones.length&&!force) return ask('기존 ZONE 을 지우고 실별 일렬 ZONE 으로 다시 만들까요?',()=>autoZones(true));
+  S.zones=S.rooms.map(r=>({id:uid('z'),name:r.name,rows:Array.from({length:Math.max(1,r.count|0)},(_,i)=>newRow([{t:'o',k:oKey(r.id,i+1)}]))}));
+  if(S.zones.length>1) S.zones.push({id:uid('z'),name:'MAIN',rows:[newRow(S.zones.map(z=>({t:'z',id:z.id})))]});
+  normalize(); S.zones=zoneOrder(); render();
+}
+function loadSample(force){
+  if((S.rooms.length||S.zones.length)&&!force) return ask('현재 내용을 지우고 예시(A실 1,000 CMH × 4 · B실 1,200 CMH × 5)를 불러올까요?',()=>loadSample(true));
+  const keep={mode:S.mode,shape:S.shape}; S=blank(); Object.assign(S,keep); S.project='예시';
+  const A={id:uid('r'),name:'A',usage:'off',flow:1000,count:4}, B={id:uid('r'),name:'B',usage:'offp',flow:1200,count:5};
+  S.rooms=[A,B];
+  const o=(r,i)=>({t:'o',k:oKey(r.id,i)});
+  const zA={id:uid('z'),name:'ZONE-A',rows:[1,2,3,4].map(i=>newRow([o(A,i)]))};
+  const zB1={id:uid('z'),name:'ZONE-B1',rows:[newRow([o(B,1)]),newRow([o(B,2)])]};
+  const zB2={id:uid('z'),name:'ZONE-B2',rows:[newRow([o(B,3)]),newRow([o(B,4)])]};
+  const zB={id:uid('z'),name:'ZONE-B',rows:[newRow([{t:'z',id:zB1.id},{t:'z',id:zB2.id}]),newRow([o(B,5)])]};
+  const zM={id:uid('z'),name:'MAIN',rows:[newRow([{t:'z',id:zA.id},{t:'z',id:zB.id}])]};
+  S.zones=[zB1,zB2,zB,zA,zM];
+  render();
+}
+function resetAll(){ ask('모든 입력을 지우고 새로 시작할까요?',()=>{ S=blank(); render(); }); }
+
+// ── 확인창 · 알림 (브라우저 confirm/alert 는 미리보기 창 등에서 막힐 수 있어 직접 그린다) ──
+let _yes=null;
+function ask(msg,yes){ _yes=yes; $('dlgMsg').textContent=msg; $('dlg').style.display='flex'; $('dlgYes').onclick=()=>{ const f=_yes; dlgClose(); f&&f(); }; }
+function dlgClose(){ $('dlg').style.display='none'; _yes=null; }
+let _tt=null;
+function toast(msg){ const t=$('toast'); t.textContent=msg; t.style.display='block'; clearTimeout(_tt); _tt=setTimeout(()=>t.style.display='none',2600); }
+
+// ── 저장 / 불러오기 ─────────────────────────────────────────
+function save(){ try{ localStorage.setItem(KEY,JSON.stringify(S)); }catch(e){} }
+function saveJSON(){
+  const a=document.createElement('a');
+  a.href=URL.createObjectURL(new Blob([JSON.stringify(S,null,2)],{type:'application/json'}));
+  a.download=`${S.project||'프로젝트'}_덕트.json`; a.click();
+}
+function adopt(d){
+  if(!d||d.v!==2||!Array.isArray(d.rooms)) throw new Error('형식');
+  S=Object.assign(blank(),d); S.louverO=Object.assign({w:null,h:null},d.louverO||{});
+}
+function loadJSON(e){
+  const f=e.target.files[0]; if(!f) return;
+  const rd=new FileReader();
+  rd.onload=ev=>{ try{ adopt(JSON.parse(ev.target.result)); render(); }
+    catch(err){ toast('불러오기 실패: 이 버전(ZONE 방식)으로 저장한 JSON 만 불러올 수 있습니다.'); } };
+  rd.readAsText(f); e.target.value='';
+}
+(function init(){
+  try{ const d=JSON.parse(localStorage.getItem(KEY)||'null'); if(d) adopt(d); }catch(e){ S=blank(); }
+  if(!S.rooms.length&&!S.zones.length){ render(); loadSampleSilent(); } else render();
+})();
+function loadSampleSilent(){ loadSample(true); S.project=''; render(); }
 </script>
 </body>
 </html>
