@@ -119,7 +119,7 @@ svg.diag{display:block;font-family:inherit}
 <div class="wrap">
   <div class="card"><div class="card-h"><span class="card-t">1. 계통 설정</span><span class="card-s">급기/배기 · 덕트 형상 · 천장 속 · 보온</span></div><div class="card-b" id="sysBox"></div></div>
   <div class="card"><div class="card-h"><span class="card-t">2. 실 · 기구</span><span class="card-s" id="roomSub"></span><span class="sp" style="flex:1"></span><button class="btn" onclick="roomAdd()">+ 실 추가</button></div><div class="card-b" id="roomBox"></div></div>
-  <div class="card"><div class="card-h"><span class="card-t">3. ZONE 구성</span><span class="card-s">각 ZONE 은 1번 줄 = 제일 끝. 그 지점에서 붙는 기구는 「+ 추가」, 갈라지는 덕트는 「+ 갈래」</span><span class="sp" style="flex:1"></span><button class="btn" onclick="autoZones()">실별 자동 구성</button><button class="btn btn-p" onclick="zoneAdd()">+ ZONE 추가</button></div><div class="card-b" id="zoneBox"></div></div>
+  <div class="card"><div class="card-h"><span class="card-t">3. ZONE 구성</span><span class="card-s">각 ZONE 은 1번 줄 = 제일 끝. 그 지점에서 붙는 기구는 「+ 추가」, 갈라지는 덕트는 「+ 갈래」</span><span class="sp" style="flex:1"></span><button class="btn" onclick="sortZones()">끝부터 정렬</button><button class="btn" onclick="autoZones()">실별 자동 구성</button><button class="btn btn-p" onclick="zoneAdd()">+ ZONE 추가</button></div><div class="card-b" id="zoneBox"></div></div>
   <div class="card"><div class="card-h"><span class="card-t">4. 계통 요약</span><span class="card-s">팬 · 루버 · 계통도 · 검토사항</span></div><div class="card-b" id="sumBox"></div></div>
   <div class="card"><details class="ref"><summary>적용 기준 (근거)</summary><div class="card-b" id="refBox"></div></details></div>
 </div>
@@ -304,7 +304,7 @@ function calcZone(zid,stack=[]){
 }
 function segChecks(s){
   const c=[];
-  if(s.ar>4+1e-9) c.push(['b-red','분할 검토']); else if(s.ar>3+1e-9) c.push(['b-warn','AR 주의']);
+  if(s.ar>4+1e-9) c.push(['b-red','분할 검토']); else if(s.ar>3+1e-9) c.push(['b-warn','아스펙트비 주의']);
   if(s.totH>s.ceil) c.push(['b-red','천장 속 초과']);
   if(s.rev) c.push(['b-red','치수 역전']);
   if(s.mountBad) c.push(['b-red','기구 접속 불가']);
@@ -401,7 +401,7 @@ function renderZones(){
   if(!S.zones.length){ $('zoneBox').innerHTML=`<div class="empty">「실별 자동 구성」을 누르면 실마다 일렬 ZONE 과 MAIN 이 만들어집니다.<br>직접 만들려면 「+ ZONE 추가」.</div>`; return; }
   const om=outletMap(), used=usedSets(), roots=rootZones(), round=S.shape==='round';
   let h='';
-  for(const z of zoneOrder()){
+  for(const z of S.zones){
     const res=calcZone(z.id), isRoot=roots.includes(z.id);
     const parent=zoneParent(z.id), pRow=parent?parent.rows.findIndex(r=>r.items.some(it=>it.t==='z'&&it.id===z.id))+1:0;
     const dep=zoneDepth(z.id), path=zonePath(z.id);
@@ -447,7 +447,7 @@ function renderZones(){
 const mm=v=>{ const r=Math.round(v*10)/10; return Number.isInteger(r)?f0(r):r.toFixed(1); };
 function segTableHTML(){
   const round=S.shape==='round'; let rows='';
-  for(const z of zoneOrder()){ const res=calcZone(z.id);
+  for(const z of S.zones){ const res=calcZone(z.id);
     res.segs.forEach((s,i)=>{ if(s.empty)return;
       const dW=(round?s.d:s.w)+2*s.plate, dH=(round?s.d:s.h)+2*s.plate;
       const chk=segChecks(s).map(c=>`<span class="badge ${c[0]}">${c[1]}</span>`).join(' ')||'<span class="badge b-ok">OK</span>';
@@ -457,7 +457,7 @@ function segTableHTML(){
         <td>${mm(dH)}</td><td>${mm(s.outH)}</td><td><b>${mm(s.totH)}</b></td><td>${f0(s.ceil)}</td><td style="white-space:nowrap">${chk}</td></tr>`; }); }
   if(!rows) return '';
   return `<div style="margin-top:16px"><b>구간별 덕트 치수 (도면용)</b><div class="tw" style="margin-top:6px"><table class="t"><thead>
-    <tr><th rowspan="2">ZONE</th><th rowspan="2">순서</th><th rowspan="2">구간</th><th rowspan="2">풍량<br>(CMH)</th><th rowspan="2">덕트<br>(안치수)</th><th rowspan="2">실제<br>(m/s)</th>${round?'':'<th rowspan="2">AR</th>'}<th rowspan="2">판두께</th><th rowspan="2">보온</th>
+    <tr><th rowspan="2">ZONE</th><th rowspan="2">순서</th><th rowspan="2">구간</th><th rowspan="2">풍량<br>(CMH)</th><th rowspan="2">덕트<br>(안치수)</th><th rowspan="2">실제<br>(m/s)</th>${round?'':'<th rowspan="2">아스펙트비</th>'}<th rowspan="2">판두께</th><th rowspan="2">보온</th>
       <th colspan="3">폭 (mm)</th><th colspan="3">높이 (mm)</th><th rowspan="2">천장 속</th><th rowspan="2">검토</th></tr>
     <tr><th>덕트</th><th>+보온</th><th>+보온+바운더리</th><th>덕트</th><th>+보온</th><th>+보온+바운더리</th></tr></thead><tbody>${rows}</tbody></table></div>
     <p class="note">덕트 = 안치수 + 판두께 × 2 · +보온 = 보온 두께 × 2 추가 · +바운더리 = 각 면 여유 추가 (폭 = 좌 + 우, 높이 = 위 + 아래). 천장 속 판정은 높이 +보온+바운더리 기준.</p></div>`;
@@ -596,7 +596,7 @@ function roomSet(id,k,v){
 }
 const Z=id=>zoneById(id), R=(z,rid)=>z&&z.rows.find(r=>r.id===rid);
 function newRow(items=[]){ return {id:uid('w'),items,vO:null,wO:null,hO:null,dO:null}; }
-function zoneAdd(){ S.zones.push({id:uid('z'),name:'ZONE-'+(S.zones.length+1),rows:[newRow()]}); render(); }
+function zoneAdd(){ S.zones.unshift({id:uid('z'),name:'ZONE-'+(S.zones.length+1),rows:[newRow()]}); render(); }
 function zoneDel(id){ const z=Z(id); if(!z)return; ask(`「${z.name}」 ZONE 을 삭제할까요? 이 ZONE 에 합류하던 갈래 ZONE 은 「미연결」로 남습니다.`,()=>{ S.zones=S.zones.filter(x=>x.id!==id); render(); }); }
 function zoneSet(id,k,v){ const z=Z(id); if(!z)return; if(k==='ceil'){ const x=num(v); z.ceil=(x==null||x<=0||x===S.ceil)?null:x; } else z[k]=v; render(); }
 // 이 줄에서 갈라지는 새 ZONE — 이름은 「상위이름-번호」, 만들자마자 이 줄에 합류시킨다
@@ -608,6 +608,7 @@ function rowBranch(zid,rid){
   const el=$('zc-'+nz.id); if(el) el.scrollIntoView({behavior:'smooth',block:'center'});
   toast(`「${nz.name}」 을 만들어 ${z.name} ${z.rows.indexOf(r)+1}번 줄에 붙였습니다. 끝(말단) 기구부터 추가하세요.`);
 }
+function sortZones(){ S.zones=zoneOrder(); render(); toast('팬에서 먼 ZONE 부터 정렬했습니다.'); }
 function rowAdd(zid){ const z=Z(zid); if(z){ z.rows.push(newRow()); render(); } }
 function rowDel(zid,rid){ const z=Z(zid); if(z){ z.rows=z.rows.filter(r=>r.id!==rid); render(); } }
 function rowMove(zid,rid,d){ const z=Z(zid); if(!z)return; const i=z.rows.findIndex(r=>r.id===rid), j=i+d; if(i<0||j<0||j>=z.rows.length)return; [z.rows[i],z.rows[j]]=[z.rows[j],z.rows[i]]; render(); }
@@ -622,7 +623,7 @@ function autoZones(force){
   if(S.zones.length&&!force) return ask('기존 ZONE 을 지우고 실별 일렬 ZONE 으로 다시 만들까요?',()=>autoZones(true));
   S.zones=S.rooms.map(r=>({id:uid('z'),name:r.name,rows:Array.from({length:Math.max(1,r.count|0)},(_,i)=>newRow([{t:'o',k:oKey(r.id,i+1)}]))}));
   if(S.zones.length>1) S.zones.push({id:uid('z'),name:'MAIN',rows:[newRow(S.zones.map(z=>({t:'z',id:z.id})))]});
-  render();
+  normalize(); S.zones=zoneOrder(); render();
 }
 function loadSample(force){
   if((S.rooms.length||S.zones.length)&&!force) return ask('현재 내용을 지우고 예시(A실 1,000 CMH × 4 · B실 1,200 CMH × 5)를 불러올까요?',()=>loadSample(true));
@@ -635,7 +636,7 @@ function loadSample(force){
   const zB2={id:uid('z'),name:'ZONE-B2',rows:[newRow([o(B,3)]),newRow([o(B,4)])]};
   const zB={id:uid('z'),name:'ZONE-B',rows:[newRow([{t:'z',id:zB1.id},{t:'z',id:zB2.id}]),newRow([o(B,5)])]};
   const zM={id:uid('z'),name:'MAIN',rows:[newRow([{t:'z',id:zA.id},{t:'z',id:zB.id}])]};
-  S.zones=[zA,zB1,zB2,zB,zM];
+  S.zones=[zB1,zB2,zB,zA,zM];
   render();
 }
 function resetAll(){ ask('모든 입력을 지우고 새로 시작할까요?',()=>{ S=blank(); render(); }); }
