@@ -168,7 +168,7 @@ function pickStd(list,mm){ for(const d of list) if(d>=mm-1e-6) return d; return 
 const KEY='duct-calc-v2';
 let _n=0; const uid=p=>p+Date.now().toString(36).slice(-4)+(++_n).toString(36);
 function blank(){ return {v:2,project:'',mode:'supply',shape:'rect',device:'inline',ventOnly:true,ceil:600,
-  insGrade:'na',epi:true,insOff:false,mount:'collar',regOpen:0.65,grilleOpen:0.70,louverOpen:0.50,louverO:{w:null,h:null},
+  insGrade:'na',epi:true,insOff:false,mount:'bottom',fitGap:25,regOpen:0.65,grilleOpen:0.70,louverOpen:0.50,louverO:{w:null,h:null},
   rooms:[],zones:[]}; }
 let S=blank();
 const $=id=>document.getElementById(id);
@@ -192,24 +192,31 @@ function rectPick(A,hLim=9999){
   for(const h of [100,150,200,250,300,350,400,450,500,600]){
     if(h>hLim) continue;
     const w=Math.max(h,ceil50(A*1e6/h)); const ar=w/h, a=w*h;
-    if(ar>3+1e-9) continue;
+    if(ar>(hLim<9999?4:3)+1e-9) continue;
     if(!best||a<best.a-1||(Math.abs(a-best.a)<1&&ar<best.ar)) best={w,h,a,ar};
   }
-  return best||{w:ceil50(Math.sqrt(A)*1000),h:ceil50(Math.sqrt(A)*1000)};
+  if(best) return best;
+  // 높이 제한 때문에 아스펙트비 3 이하가 안 되면 4 까지, 그래도 안 되면 제한 높이에서 길게
+  if(hLim<9999){ const h=Math.max(100,floor50(hLim)); return {w:Math.max(h,ceil50(A*1e6/h)),h}; }
+  const s=ceil50(Math.sqrt(A)*1000); return {w:s,h:s};
 }
 function calcTerm(r){
   const kind=termKind(), cnt=Math.max(1,r.count|0), q=(+r.flow||0)/cnt;
   const V=r.vO||termVelDefault(r), Ak=q/3600/V;
+  const lim=TLIM[r.id]||9999;   // 이 실의 기구가 붙는 덕트 중 크기가 고정된 곳에서 허용되는 기구 치수
   if(kind==='diff'){
     // 디퓨져는 카탈로그의 넥 크기·NC·도달거리로 고른다 (학회 15.3). 여기서는 넥 지름 개략만 낸다
-    const d=r.dO||pickStd(NECK,Math.sqrt(4*Ak/Math.PI)*1000), area=Math.PI*d*d/4/1e6;
-    return {kind,q,V,Ak,d,area,vAct:q/3600/area,ok:q/3600/area<=V+1e-6};
+    let d=r.dO||pickStd(NECK,Math.sqrt(4*Ak/Math.PI)*1000), limited=false;
+    if(!r.dO&&d>lim){ const fit=NECK.filter(x=>x<=lim); if(fit.length){ d=fit[fit.length-1]; limited=true; } }
+    const area=Math.PI*d*d/4/1e6;
+    return {kind,q,V,Ak,d,area,vAct:q/3600/area,ok:q/3600/area<=V+1e-6,limited};
   }
   const a=kind==='grille'?S.grilleOpen:S.regOpen, A=Ak/a;
-  // 측면 직부 — 기구 높이 + 100 이 덕트 높이 상한 안에 들어가야 한다 → 기구를 낮고 넓게 고른다
-  const p=rectPick(A,S.mount==='side'?hMax()-100:9999);
+  // 측면 직부는 덕트 높이 상한, 크기가 고정된 덕트는 그 치수에서 여유를 뺀 만큼 → 기구를 낮고 넓게 고른다
+  const hLim=Math.min(lim,S.mount==='side'&&S.shape!=='round'?hMax()-GAP():9999);
+  const p=rectPick(A,hLim), free=rectPick(A);
   const w=r.wO||p.w, h=r.hO||p.h, area=w*h/1e6;
-  return {kind,q,V,Ak,a,A,w,h,area,vAct:q/3600/(area*a),vFace:q/3600/area,ok:q/3600/(area*a)<=V+1e-6};
+  return {kind,q,V,Ak,a,A,w,h,area,vAct:q/3600/(area*a),vFace:q/3600/area,ok:q/3600/(area*a)<=V+1e-6,limited:!r.wO&&!r.hO&&(p.w!==free.w||p.h!==free.h)};
 }
 
 // ── ZONE 계산 ───────────────────────────────────────────────
@@ -241,33 +248,60 @@ function normalize(){
 }
 const hMax=(c=S.ceil)=>Math.max(100,floor50(c-45-55-2*insT()-2*0.5));
 const zCeil=z=>(z&&z.ceil)||S.ceil;
+const GAP=()=>2*(S.fitGap??25);   // 기구 양쪽 여유 합 — 덕트 안치수 ≥ 기구 + 여유 × 2
 
 function sizeSeg(flow,V,ctx,ov){
   const A=flow/3600/V, ins=insT();
+  const cap=ctx.cap||{w:1e9,h:1e9,d:1e9};
   if(S.shape==='round'){
     const need=Math.max(Math.sqrt(4*A/Math.PI)*1000,ctx.minD||0,ctx.mD||0);
-    const d=ov.d||pickStd(SPIRAL,need), area=Math.PI*d*d/4/1e6, p=plateRound(d), m=marginRound(d);
+    let d=ov.d||pickStd(SPIRAL,need), capped=false;
+    if(!ov.d&&d>cap.d){ d=cap.d; capped=true; }
+    const area=Math.PI*d*d/4/1e6, p=plateRound(d), m=marginRound(d);
     const oD=d+2*p+2*ins;
     return {A,d,area,vAct:flow/3600/area,ar:1,plate:p,ins,m,outW:oD,outH:oD,totW:oD+m.l+m.r,totH:oD+m.t+m.b,dim:'φ'+f0(d),ceil:ctx.ceil,
-      rev:d<(ctx.minD||0)-1e-6,mountBad:ctx.mD&&d<ctx.mD-1e-6};
+      rev:d<(ctx.minD||0)-1e-6,mountBad:ctx.mD&&d<ctx.mD-1e-6,capped,fixed:!!ov.d||capped};
   }
-  const HM=hMax(ctx.ceil), need=Math.max(A,ctx.minArea||0);
+  const HM=Math.min(hMax(ctx.ceil),cap.h), need=Math.max(A,ctx.minArea||0);
   let h=ov.h||Math.max(ctx.hPrev||0,ctx.hIn||0)||Math.min(HM,Math.max(100,ceil50(Math.sqrt(A)*1000)));
-  if(!ov.h&&ctx.mH) h=Math.max(h,ceil50(ctx.mH));          // 측면 직부: 덕트 높이 ≥ 기구 높이 + 100
-  const wOf=hh=>Math.max(100,ceil50(need*1e6/hh),ctx.mW?ceil50(ctx.mW):0);   // 하부 직부: 덕트 폭 ≥ 기구 단변 + 100
+  if(!ov.h&&ctx.mH) h=Math.max(h,ceil50(ctx.mH));          // 측면 직부: 덕트 높이 ≥ 기구 높이 + 여유 × 2
+  if(!ov.h&&h>cap.h) h=cap.h;                               // 팬 쪽에서 크기를 고정한 줄보다 크지 않게
+  const wOf=hh=>Math.min(Math.max(100,ceil50(need*1e6/hh),ctx.mW?ceil50(ctx.mW):0),ov.w?1e9:cap.w);   // 하부 직부: 덕트 폭 ≥ 기구 단변 + 여유 × 2
   let w=ov.w||wOf(h), auto=false;
   if(!ov.h&&!ov.w){
     // 기준: AC-027 Rule 3 — 아스펙트비 4 초과면 높이를 50 mm 씩 올려 찾고, 천장 속 한계면 분할 검토
     while(w/h>4+1e-9&&h+50<=HM){ h+=50; w=wOf(h); auto=true; }
     while(h/w>4+1e-9&&h-50>=Math.max(100,ctx.mH?ceil50(ctx.mH):0)){ h-=50; w=wOf(h); auto=true; }
   }
+  const capped=(!ov.w&&w>=cap.w-1e-6&&cap.w<1e9&&w*h<need*1e6-1)||(!ov.h&&h>=cap.h-1e-6&&cap.h<1e9&&w*h<need*1e6-1);
   const area=w*h/1e6, L=Math.max(w,h), p=plateRect(L), m=marginRect(L);
   const outW=w+2*p+2*ins, outH=h+2*p+2*ins;
   return {A,w,h,area,vAct:flow/3600/area,ar:L/Math.min(w,h),plate:p,ins,m,outW,outH,totW:outW+m.l+m.r,totH:outH+m.t+m.b,auto,dim:f0(w)+'×'+f0(h),ceil:ctx.ceil,
-    rev:area<(ctx.minArea||0)-1e-9,mountBad:(ctx.mW&&w<ctx.mW-1e-6)||(ctx.mH&&h<ctx.mH-1e-6)};
+    rev:area<(ctx.minArea||0)-1e-9&&!capped,mountBad:(ctx.mW&&w<ctx.mW-1e-6)||(ctx.mH&&h<ctx.mH-1e-6),capped,
+    fixed:!!ov.w||!!ov.h||(cap.w<1e9&&w>=cap.w-1e-6)||(cap.h<1e9&&h>=cap.h-1e-6)};
 }
 
-let MEMO={};
+let MEMO={}, CAP={}, TLIM={};
+// 크기를 직접 정한 줄은 그보다 말단 쪽(앞 줄 · 그 줄로 들어오는 갈래)의 상한이 된다
+function computeCaps(){
+  CAP={}; const INF={w:1e9,h:1e9,d:1e9}, mn=(a,b)=>({w:Math.min(a.w,b.w),h:Math.min(a.h,b.h),d:Math.min(a.d,b.d)});
+  const own=r=>({w:r.wO||1e9,h:r.hO||1e9,d:r.dO||1e9});
+  const walk=(zid,inh,dep=0)=>{ const z=zoneById(zid); if(!z||dep>50||CAP[zid])return;
+    // CAP[zid][i] = i 번 줄보다 팬 쪽에서 직접 정한 크기들 + 이 ZONE 이 합류하는 줄의 크기 중 가장 작은 것
+    CAP[zid]=z.rows.map((_,i)=>{ let m=inh; for(let j=i+1;j<z.rows.length;j++) m=mn(m,own(z.rows[j])); return m; });
+    z.rows.forEach((r,i)=>{ const here=mn(CAP[zid][i],own(r)); for(const it of r.items) if(it.t==='z') walk(it.id,here,dep+1); }); };
+  const used=usedSets(); for(const z of S.zones) if(!used.z.has(z.id)) walk(z.id,INF);
+}
+// 덕트 ↔ 기구 맞춤: ① 기구에 맞춰 덕트를 키우고 ② 크기가 고정된 덕트에 붙는 기구는 그 덕트에 들어가게 다시 고른다
+function solve(){
+  TLIM={}; MEMO={}; computeCaps(); S.zones.forEach(z=>calcZone(z.id));
+  if(S.mount==='collar') return;
+  const L={};
+  for(const z of S.zones) for(const s of calcZone(z.id).segs){ if(s.empty||!s.fixed) continue;
+    const avail=(S.shape==='round'?s.d:S.mount==='bottom'?s.w:s.h)-GAP();
+    for(const rid of s.direct) L[rid]=Math.min(L[rid]??9999,avail); }
+  if(Object.keys(L).length){ TLIM=L; MEMO={}; S.zones.forEach(z=>calcZone(z.id)); }
+}
 function calcZone(zid,stack=[]){
   if(MEMO[zid]) return MEMO[zid];
   const z=zoneById(zid); if(!z||stack.includes(zid)) return {flow:0,outlets:[],rooms:new Set(),segs:[],last:null,err:true};
@@ -289,14 +323,14 @@ function calcZone(zid,stack=[]){
     if(S.mount!=='collar') for(const it of row.items) if(it.t==='o'&&om[it.k]){
       const t=calcTerm(om[it.k].room);
       if(t.kind==='diff') mc.mD=Math.max(mc.mD,t.d);
-      else if(S.shape==='round') mc.mD=Math.max(mc.mD,t.h+100);
-      else if(S.mount==='bottom') mc.mW=Math.max(mc.mW,t.h+100);
-      else mc.mH=Math.max(mc.mH,t.h+100);
+      else if(S.shape==='round') mc.mD=Math.max(mc.mD,t.h+GAP());
+      else if(S.mount==='bottom') mc.mW=Math.max(mc.mW,t.h+GAP());
+      else mc.mH=Math.max(mc.mH,t.h+GAP());
     }
-    const ctx={ceil:zCeil(z),...mc,hPrev:prev?prev.h:0,hIn:Math.max(0,...lasts.map(l=>l.h||0)),
+    const ctx={ceil:zCeil(z),cap:(CAP[zid]||[])[z.rows.indexOf(row)],...mc,hPrev:prev?prev.h:0,hIn:Math.max(0,...lasts.map(l=>l.h||0)),
       minArea:Math.max(prev?prev.area:0,...lasts.map(l=>l.area)),minD:Math.max(prev?prev.d||0:0,...lasts.map(l=>l.d||0))};
     const sz=sizeSeg(flow,V,ctx,{w:row.wO,h:row.hO,d:row.dO});
-    const seg=Object.assign({row,flow,type,V,cnt:outlets.length,subs:subs.map(s=>s.zid)},sz);
+    const seg=Object.assign({row,flow,type,V,cnt:outlets.length,subs:subs.map(s=>s.zid),direct:row.items.filter(it=>it.t==='o'&&om[it.k]).map(it=>om[it.k].room.id)},sz);
     segs.push(seg); prev=seg;
   }
   const res={zid,flow:prev?prev.flow:0,outlets,rooms,segs,last:prev};
@@ -307,7 +341,9 @@ function segChecks(s){
   if(s.ar>4+1e-9) c.push(['b-red','분할 검토']); else if(s.ar>3+1e-9) c.push(['b-warn','아스펙트비 주의']);
   if(s.totH>s.ceil) c.push(['b-red','천장 속 초과']);
   if(s.rev) c.push(['b-red','치수 역전']);
-  if(s.mountBad) c.push(['b-red','기구 접속 불가']);
+  if(s.mountBad) c.push(['b-red','기구 안 들어감']);
+  if(s.capped) c.push(['b-warn','팬 쪽 고정 크기에 맞춤']);
+  if(s.vAct>s.V*1.05) c.push(['b-warn','기준 풍속 초과']);
   if(s.area>=0.6) c.push(['b-warn','내진 대상']);
   if(s.vAct>15) c.push(['b-red','15 m/s 초과']);
   if(s.auto) c.push(['b-info','높이 자동']);
@@ -330,7 +366,7 @@ function calcLouver(Qcmh){
 
 // ── 렌더 ─────────────────────────────────────────────────────
 function render(){
-  normalize(); MEMO={};
+  normalize(); solve();
   $('projectName').value=S.project||'';
   renderSys(); renderRooms(); renderZones(); renderSummary(); renderRef(); save();
 }
@@ -351,7 +387,8 @@ function renderSys(){
     <div class="fg"><span class="fl">기구 접속 방식</span>${sel(S.shape==='round'
         ?[['collar','칼라·플렉시블 (제약 없음)'],['bottom','덕트 직부 (지름 ≥ 기구)']]
         :[['collar','칼라·플렉시블 (제약 없음)'],['bottom','덕트 하부 직부'],['side','덕트 측면 직부']],S.mount==='side'&&S.shape==='round'?'bottom':S.mount,"setSys('mount',this.value)")}
-      <span class="fh">${S.mount==='collar'?'기구와 덕트 치수 연동 없음':S.shape==='round'?'기구가 붙는 줄의 덕트 지름 ≥ 기구':S.mount==='bottom'?'기구가 붙는 줄의 덕트 폭 ≥ 기구 단변 + 100':'덕트 높이 ≥ 기구 높이 + 100 · 기구는 낮고 넓게'}</span></div>
+      <span class="fh">${S.mount==='collar'?'기구와 덕트 치수 연동 없음':S.shape==='round'?'기구가 붙는 줄의 덕트 지름 ≥ 기구 + 여유 × 2':S.mount==='bottom'?'기구가 붙는 줄의 덕트 폭 ≥ 기구 단변 + 여유 × 2':'덕트 높이 ≥ 기구 높이 + 여유 × 2 · 기구는 낮고 넓게'}</span></div>
+    ${S.mount==='collar'?'':`<div class="fg"><span class="fl">기구 여유 (한쪽, mm)</span><input class="fi" type="text" inputmode="decimal" value="${f0(S.fitGap??25)}" onchange="setSys('fitGap',this.value)"><span class="fh">덕트 안치수 = 기구 + ${f0(GAP())} mm 이상</span></div>`}
     <div class="fg"><span class="fl">외벽 루버 개구율 (외기·배기)</span><input class="fi" type="text" inputmode="decimal" step="0.05" value="${S.louverOpen}" onchange="setSys('louverOpen',this.value)"><span class="fh">0.45 이하면 면적 보정 (KDS 4.4)</span></div>
     ${S.mode==='exhaust'?`<div class="fg"><span class="fl">흡입구 기준</span><label class="chk"><input type="checkbox" ${S.ventOnly?'checked':''} onchange="setSys('ventOnly',this.checked)">환기 전용 계통 (실내 흡입구 2.0 m/s)</label><span class="fh">학회 표 4.6 · 공조 계통이면 해제</span></div>`:''}
   </div>`;
@@ -379,7 +416,7 @@ function renderRooms(){
           <td><input class="ti s${r.wO?' ov':''}" type="text" inputmode="decimal" step="50" value="${f0(c.w)}" onchange="roomSet('${r.id}','wO',this.value)"></td>
           <td><input class="ti s${r.hO?' ov':''}" type="text" inputmode="decimal" step="50" value="${f0(c.h)}" onchange="roomSet('${r.id}','hO',this.value)"></td>`}
       <td>${f2(c.vAct)}</td>${isD?'':`<td class="cv">${f2(c.vFace)}</td>`}
-      <td><span class="badge ${c.ok?'b-ok':'b-red'}">${c.ok?'OK':'풍속 초과'}</span></td>
+      <td><span class="badge ${c.ok?'b-ok':'b-red'}">${c.ok?'OK':'풍속 초과'}</span>${c.limited?' <span class="badge b-info" title="크기가 고정된 덕트에 들어가도록 기구를 낮고 넓게 다시 골랐습니다">덕트에 맞춤</span>':''}</td>
       <td><button class="btn-x" title="삭제" onclick="roomDel('${r.id}')">✕</button></td></tr>`;
   }
   h+=`</tbody></table></div><p class="note">파란 글씨 = 직접 입력한 값 (지우면 자동값으로 돌아감). ${isD?'디퓨져는 넥 지름 개략값 — 카탈로그의 넥 풍속·NC·도달거리로 확정.':'크기는 필요 겉면적 이상 중 가장 작은 것 (아스펙트비 3 이하, 50 mm 단위).'}</p>`;
@@ -514,7 +551,7 @@ function renderSummary(){
   for(const z of S.zones){ const res=calcZone(z.id); res.segs.forEach((s,i)=>{ if(s.empty)return;
     if(s.totH>s.ceil) warns.push(['wi-red',`${esc(z.name)} ${i+1}번 구간 ${s.dim} — 필요 높이 ${f0(s.totH)} mm 가 천장 속 ${f0(s.ceil)} mm 를 넘습니다. 높이를 낮추고 폭을 넓히거나 분할 검토.`]);
     if(s.rev) warns.push(['wi-red',`${esc(z.name)} ${i+1}번 구간 ${s.dim} — 직접 입력한 치수가 하류(앞 줄·합류 ZONE)보다 작습니다 (치수 역전).`]);
-    if(s.mountBad) warns.push(['wi-red',`${esc(z.name)} ${i+1}번 구간 ${s.dim} — 직접 입력한 치수로는 이 줄의 기구를 덕트에 직접 붙일 수 없습니다 (${{bottom:'폭 ≥ 기구 단변 + 100',side:'높이 ≥ 기구 높이 + 100'}[S.mount]||'지름 ≥ 기구'}).`]);
+    if(s.mountBad) warns.push(['wi-red',`${esc(z.name)} ${i+1}번 구간 ${s.dim} — 이 줄의 기구가 덕트에 여유 있게 들어가지 않습니다. 기구 크기를 직접 정했다면 자동으로 되돌리거나 덕트를 키우세요 (${{bottom:'폭 ≥ 기구 단변 + 여유 × 2',side:'높이 ≥ 기구 높이 + 여유 × 2'}[S.mount]||'지름 ≥ 기구 + 여유 × 2'}).`]);
     if(s.ar>4+1e-9) warns.push(['wi-warn',`${esc(z.name)} ${i+1}번 구간 ${s.dim} — 아스펙트비 ${f2(s.ar)} (4 초과). 풍속 상향·경로 변경·분할 검토.`]);
     if(s.area>=0.6) warns.push(['wi-warn',`${esc(z.name)} ${i+1}번 구간 ${s.dim} — 단면적 ${f2(s.area)} m² ≥ 0.6, 내진 대상 (AC-079).`]); }); }
   const root=roots.length?calcZone(roots[0]):null;
@@ -538,11 +575,14 @@ function renderSummary(){
       <div class="row"><span>${ex?'토출측':'흡입측'} 직관</span><span>팬 날개지름 × 4 이상</span></div>`:'<div class="row"><span>ZONE 미구성</span><span>—</span></div>'}
       <p class="note">팬 정압은 덕트 길이·부속이 정해진 뒤 계산 (다음 단계).</p></div>
     <div class="sbox"><h4>${ex?'배기 루버':'외기 루버'} — KDS 31 25 30 4.4(${ex?2:1})</h4>
-      <div class="big">${f0(L.w)} × ${f0(L.h)} mm</div>
-      <div class="row"><span>풍량</span><span>${f0(L.Ls)} L/s</span></div>
+      <div class="row"><span>풍량 (CMH)</span><span><b>${f0(Q)}</b></span></div>
+      <div class="row"><span>SIZE</span><span><b>${f0(L.w)} × ${f0(L.h)}</b></span></div>
+      <div class="row"><span>OPENING SIZE</span><span><b>${f0(L.w+50)} × ${f0(L.h+50)}</b></span></div>
+      <div class="row"><span>VELOCITY</span><span><b>${f2(L.vFace)} m/s</b></span></div>
+      <div class="row" style="border-top:1px dashed var(--border);margin-top:4px;padding-top:6px"><span>풍량 (L/s)</span><span>${f0(L.Ls)}</span></div>
       <div class="row"><span>적용 식</span><span>${L.rule}</span></div>
       <div class="row"><span>필요 전면면적</span><span>${f3(L.A)} m²${L.adj?' (개구율 보정)':''}</span></div>
-      <div class="row"><span>선정 면적 · 전면풍속</span><span>${f3(L.area)} m² · ${f2(L.vFace)} m/s</span></div>
+      <div class="row"><span>선정 면적</span><span>${f3(L.area)} m²</span></div>
       ${red}
       <div class="row no-print"><span>크기 직접 입력</span><span><input class="ti s${S.louverO.w?' ov':''}" type="text" inputmode="decimal" step="50" value="${f0(L.w)}" onchange="louverSet('w',this.value)"> × <input class="ti s${S.louverO.h?' ov':''}" type="text" inputmode="decimal" step="50" value="${f0(L.h)}" onchange="louverSet('h',this.value)"></span></div>
       <span class="badge ${L.ok?'b-ok':'b-red'}">${L.ok?'면적 OK':'면적 부족'}</span>
@@ -572,6 +612,7 @@ function renderRef(){
   <p>열전도율 등급 가 20 · 나 25 · 다 30 · 라 35 mm. 에너지절약설계기준 EPI 7번 적용 시 ×1.2 후 5 mm 올림. 외기·배기·다습 구간은 결로 검토 별도. 주방배기는 불연재(화기 50 / 일반 25 이상), 제연덕트 25.</p>
   <h4>각 면 여유 (보온 바깥에서, mm) — 어림값</h4>
   <p>각형 장변 750 이하: 위 45 · 아래 55 · 좌우 75 / 760~1,500: 55 · 75 · 95 / 1,500 초과: 65 · 95 · 115<br>원형 600 이하: 위 40 · 아래 20 · 좌우 30 / 600 초과: 50 · 40 · 50<br>위 = 플랜지·볼트·작업 틈 · 아래 = 플랜지·지지앵글 · 좌우 = 플랜지·행거 볼트</p>
+  <h4>덕트 ↔ 기구 맞춤</h4><p>직부(하부·측면)이면 기구가 붙는 줄의 덕트 안치수 ≥ 기구 + 여유 × 2 (기본 한쪽 25 mm). 덕트가 자동이면 덕트를 키우고, 덕트 크기를 직접 정했거나 팬 쪽 고정 크기에 묶였으면 그 실의 기구를 낮고 넓게 다시 고른다. 크기를 직접 정한 줄은 그보다 말단 쪽(앞 줄 · 그 줄로 들어오는 갈래)의 상한이 된다.</p>
   <h4>아스펙트비</h4><p>학회 설계기준 6장 (8) 「원칙적으로 4:1 이하」. 3 이하 양호 · 3~4 주의 · 4 초과 분할 검토. 4 에서 마찰 약 1.25 배.</p>
   <h4>루버 — KDS 31 25 30 4.4</h4><p>외기: 3,300 L/s 이상 전면풍속 2.0 m/s 이하, 미만 A = 0.4 + 0.00036Q · 배기: 2.5 m/s / A = 0.4 + 0.00025Q (원문 오탈자 재검증 필요) · 개구율 45% 이하 별도 산정.</p>
   <h4>팬 · 부속 — KDS 31 25 30</h4><p>흡입측 직관 날개지름 × 4 (또는 × 1 + 터닝베인 엘보) · 토출측 직관 출구 장변 × 1.5 · 엘보 곡률반경 1.5 이상 · 분지덕트 VD · 플렉시블 2.0 m 이하. 축소 한쪽 30° · 확대 한쪽 15° (KCS 31 20 20 3.1.2, 원문 대조 필요).</p>`;
@@ -579,7 +620,7 @@ function renderRef(){
 
 // ── 이벤트 ───────────────────────────────────────────────────
 function setSys(k,v){
-  if(['ceil','regOpen','grilleOpen','louverOpen'].includes(k)){ const x=num(v); if(x==null||x<=0) return render(); S[k]=x; }
+  if(['ceil','regOpen','grilleOpen','louverOpen','fitGap'].includes(k)){ const x=num(v); if(x==null||x<0||(x===0&&k!=='fitGap')) return render(); S[k]=x; }
   else S[k]=v;
   if(S.shape==='round'&&S.mount==='side') S.mount='bottom';
   render();
