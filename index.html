@@ -366,7 +366,9 @@ function calcLouver(Qcmh){
   let A=Ls>=3300?Qcmh/3600/(ex?2.5:2.0):0.4+(ex?0.00025:0.00036)*Ls, adj=false;
   // 개구율 45% 이하 — 45% 루버와 같은 유효면적이 되도록 키운다 (해석)
   if(S.louverOpen<=0.45){ A=A*0.45/S.louverOpen; adj=true; }
-  const s=ceil50(Math.sqrt(A)*1000), h=S.louverO.h||s, w=S.louverO.w||Math.max(ceil50(A*1e6/h),100);
+  // 한쪽만 정하면 다른 쪽을 필요 전면면적에 맞춰 다시 구한다
+  const s=ceil50(Math.sqrt(A)*1000), oW=S.louverO.w, oH=S.louverO.h;
+  const h=oH||(oW?Math.max(100,ceil50(A*1e6/oW)):s), w=oW||Math.max(ceil50(A*1e6/h),100);
   const area=w*h/1e6;
   return {ex,Ls,A,adj,w,h,area,vFace:Qcmh/3600/area,ok:area>=A-1e-6,rule:Ls>=3300?'전면풍속 '+(ex?'2.5':'2.0')+' m/s 이하':'A = 0.4 + '+(ex?'0.00025':'0.00036')+' × Q'};
 }
@@ -667,7 +669,7 @@ function rowSet(zid,rid,k,v){ const r=R(Z(zid),rid); if(!r)return; const x=num(v
   render(); }
 function itemAdd(zid,rid,val){ const r=R(Z(zid),rid); if(!r||!val)return; const [t,id]=val.split('|'); r.items.push(t==='o'?{t:'o',k:id}:{t:'z',id}); render(); }
 function itemDel(zid,rid,i){ const r=R(Z(zid),rid); if(!r)return; r.items.splice(i,1); render(); }
-function louverSet(k,v){ const x=num(v); S.louverO[k]=(x==null||x<=0)?null:x; render(); }
+function louverSet(k,v){ const x=num(v); S.louverO[k]=(x==null||x<=0)?null:x; S.louverO[k==='w'?'h':'w']=null; render(); }   // 마지막에 바꾼 쪽만 고정
 
 // 실마다 기구를 일렬로 잇는 ZONE 을 만들고, 실이 둘 이상이면 MAIN 에서 합류
 function autoZones(force){
