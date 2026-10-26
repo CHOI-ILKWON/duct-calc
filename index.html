@@ -175,7 +175,7 @@ function pickStd(list,mm){ for(const d of list) if(d>=mm-1e-6) return d; return 
 const KEY='duct-calc-v2';
 let _n=0; const uid=p=>p+Date.now().toString(36).slice(-4)+(++_n).toString(36);
 function blank(){ return {v:2,project:'',mode:'supply',shape:'rect',device:'inline',ventOnly:true,ceil:600,
-  insGrade:'na',epi:true,insOff:false,seisAvoid:true,mount:'bottom',fitGap:75,fitV2:true,ventV:4.0,ventOpen:0.7,regOpen:0.65,grilleOpen:0.70,louverOpen:0.50,louverO:{w:null,h:null},
+  insGrade:'na',epi:true,insOff:false,seisAvoid:true,mount:'bottom',fitGap:75,fitV2:true,ventV:4.0,ventOpen:0.7,regOpen:0.65,grilleOpen:0.70,louverOpen:0.50,louverV:null,louverO:{w:null,h:null},
   rooms:[],zones:[]}; }
 let S=blank();
 const $=id=>document.getElementById(id);
@@ -395,12 +395,15 @@ function calcLouver(Qcmh,exArg){
   let A=Ls>=3300?Qcmh/3600/(ex?2.5:2.0):0.4+(ex?0.00025:0.00036)*Ls, adj=false;
   // 개구율 45% 이하 — 45% 루버와 같은 유효면적이 되도록 키운다 (해석)
   if(S.louverOpen<=0.45){ A=A*0.45/S.louverOpen; adj=true; }
+  // 목표 전면풍속 (선택) — KDS 면적보다 크게만 잡는다. 더 빠르게는 KDS 가 상한
+  const Akds=A, tgt=S.louverV, Atgt=tgt?Qcmh/3600/tgt:0; let byTgt=false;
+  if(Atgt>A){ A=Atgt; byTgt=true; }
   // 한쪽만 정하면 다른 쪽을 필요 전면면적에 맞춰 다시 구한다
   const s=ceil50(Math.sqrt(A)*1000), oW=S.louverO.w, oH=S.louverO.h;
   let h=oH||(oW?Math.max(100,ceil50(A*1e6/oW)):s), w=oW||Math.max(ceil50(A*1e6/h),100);
   if(!oW&&!oH&&w<h) [w,h]=[h,w];   // 자동이면 가로를 긴 쪽으로
   const area=w*h/1e6;
-  return {ex,Ls,A,adj,w,h,area,vFace:Qcmh/3600/area,ok:area>=A-1e-6,rule:Ls>=3300?'전면풍속 '+(ex?'2.5':'2.0')+' m/s 이하':'A = 0.4 + '+(ex?'0.00025':'0.00036')+' × Q'};
+  return {ex,Ls,A,adj,Akds,tgt,byTgt,tgtCapped:!!tgt&&!byTgt,w,h,area,vFace:Qcmh/3600/area,ok:area>=A-1e-6,rule:Ls>=3300?'전면풍속 '+(ex?'2.5':'2.0')+' m/s 이하':'A = 0.4 + '+(ex?'0.00025':'0.00036')+' × Q'};
 }
 
 // 벤트캡 (천정형팬 계통의 외벽 끝단)
@@ -684,7 +687,9 @@ function renderSummary(){
       <div class="row"><span>VELOCITY</span><span><b>${f2(L.vFace)} m/s</b></span></div>
       <div class="row" style="border-top:1px dashed var(--border);margin-top:4px;padding-top:6px"><span>풍량 (L/s)</span><span>${f0(L.Ls)}</span></div>
       <div class="row"><span>적용 식</span><span>${L.rule}</span></div>
-      <div class="row"><span>필요 전면면적</span><span>${f3(L.A)} m²${L.adj?' (개구율 보정)':''}</span></div>
+      <div class="row"><span>필요 전면면적</span><span>${f3(L.A)} m²${L.adj?' (개구율 보정)':''}${L.byTgt?' (목표 풍속)':''}</span></div>
+      <div class="row no-print"><span>목표 전면풍속 (선택)</span><span><input class="ti s${S.louverV?' ov':''}" type="text" inputmode="decimal" value="${S.louverV?f1(S.louverV):''}" placeholder="—" onchange="setLouverV(this.value)"> m/s</span></div>
+      ${L.tgtCapped?`<div class="row"><span></span><span class="card-s" style="color:var(--warn)">목표 ${f1(L.tgt)} m/s 보다 KDS 면적이 커서 KDS 적용 (${f2(Q/3600/L.Akds)} m/s 이하)</span></div>`:''}
       <div class="row"><span>선정 면적</span><span>${f3(L.area)} m²</span></div>
       ${red}
       <div class="row no-print"><span>크기 직접 입력</span><span><input class="ti s${S.louverO.w?' ov':''}" type="text" inputmode="decimal" step="50" value="${f0(L.w)}" onchange="louverSet('w',this.value)"> × <input class="ti s${S.louverO.h?' ov':''}" type="text" inputmode="decimal" step="50" value="${f0(L.h)}" onchange="louverSet('h',this.value)"></span></div>
@@ -734,6 +739,7 @@ function renderCeilSummary(Q,totalRoom,m,warns){
       <p class="note">화장실 배기덕트는 실내 공기라 보온을 생략하기도 하나, 외벽 가까운 구간은 겨울철 결로를 검토.</p></div></div>
     <div style="margin-top:14px"><b>검토사항</b><div class="warn-list" style="margin-top:6px">${wl}</div></div>`;
 }
+function setLouverV(v){ const x=num(v); S.louverV=(x==null||x<=0)?null:x; S.louverO={w:null,h:null}; render(); }
 function ventSet(v){ const x=num(v); S.ventO=(x==null||x<=0)?null:x; render(); }
 function renderRef(){
   if($('refBox').dataset.done) return; $('refBox').dataset.done=1;
