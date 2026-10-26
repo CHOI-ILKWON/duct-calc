@@ -170,7 +170,7 @@ function pickStd(list,mm){ for(const d of list) if(d>=mm-1e-6) return d; return 
 const KEY='duct-calc-v2';
 let _n=0; const uid=p=>p+Date.now().toString(36).slice(-4)+(++_n).toString(36);
 function blank(){ return {v:2,project:'',mode:'supply',shape:'rect',device:'inline',ventOnly:true,ceil:600,
-  insGrade:'na',epi:true,insOff:false,mount:'bottom',fitGap:25,regOpen:0.65,grilleOpen:0.70,louverOpen:0.50,louverO:{w:null,h:null},
+  insGrade:'na',epi:true,insOff:false,mount:'bottom',fitGap:25,ventV:4.0,ventOpen:1.0,regOpen:0.65,grilleOpen:0.70,louverOpen:0.50,louverO:{w:null,h:null},
   rooms:[],zones:[]}; }
 let S=blank();
 const $=id=>document.getElementById(id);
@@ -385,8 +385,17 @@ function calcLouver(Qcmh,exArg){
   return {ex,Ls,A,adj,w,h,area,vFace:Qcmh/3600/area,ok:area>=A-1e-6,rule:Ls>=3300?'전면풍속 '+(ex?'2.5':'2.0')+' m/s 이하':'A = 0.4 + '+(ex?'0.00025':'0.00036')+' × Q'};
 }
 
-// 벤트캡 (천정형팬 계통의 외벽 끝단) — 접속 덕트 지름 그대로. KDS 4.4 루버 면적식(기본 0.4 ㎡)은 소형 원형 배기구에 맞지 않아 쓰지 않는다 (판단)
-function calcVent(Q,d){ const D=S.ventO||d||100, area=Math.PI*D*D/4/1e6; return {D,open:D+50,v:Q/3600/area}; }
+// 벤트캡 (천정형팬 계통의 외벽 끝단)
+// 기준: 학회 「건축기계설비 설계기준」 표 4.6 배기루버 — 유효 개구면 풍속 4.0 m/s.
+//   벤트캡의 유효 개구면 = 공칭 단면 × 개구율(방충망·후드 형상, 카탈로그 값). 합류 후 전체 풍량으로 산정한다.
+//   KDS 31 25 30 4.4(2) 배기루버 면적식(A = 0.4 + 0.00025Q)은 벽 루버용이라 원형 벤트캡에는 참고로만 표시 (판단).
+const VENT=[100,125,150,200,250,300,350,400,450,500,550,600,650,700,750,800,900,1000,1100,1200];
+function calcVent(Q,d){
+  const V=S.ventV||4.0, a=S.ventOpen||1.0, need=Math.sqrt(4*Q/3600/(V*a)/Math.PI)*1000;
+  const D=S.ventO||pickStd(VENT,Math.max(need,d||0)), area=Math.PI*D*D/4/1e6;
+  const vEff=Q/3600/(area*a), red=d&&D>d?(D-d)/2/Math.tan(15*Math.PI/180):0;
+  return {D,open:D+50,v:Q/3600/area,vEff,V,a,need,ok:vEff<=V+1e-6,red,kds:0.4+0.00025*Q/3.6};
+}
 
 // ── 렌더 ─────────────────────────────────────────────────────
 function render(){
@@ -662,7 +671,7 @@ function louverBox(L,Q,ex,other){
 }
 function renderCeilSummary(Q,totalRoom,m,warns){
   const n=S.rooms.reduce((a,r)=>a+Math.max(1,r.count|0),0), V=calcVent(Q,m?m.d:0);
-  if(V.v>5) warns.push(['wi-warn',`벤트캡 φ${V.D} 통과 풍속 ${f2(V.v)} m/s — 바람 소리·빗물 유입을 카탈로그로 확인하세요.`]);
+  if(!V.ok) warns.push(['wi-red',`벤트캡 ${V.D}A — 유효풍속 ${f2(V.vEff)} m/s 가 기준 ${f1(V.V)} m/s 를 넘습니다 (합류 후 ${f0(Q)} CMH 기준). 크기를 키우세요.`]);
   const wl=warns.length?warns.map(w=>`<div class="warn-item ${w[0]}">${w[1]}</div>`).join(''):'<div class="warn-item wi-ok">검토사항 없음</div>';
   $('sumBox').innerHTML=`<div class="sum">
     <div class="sbox"><h4>천정형팬</h4><div class="big">${n}대 · ${f0(Q)} CMH</div>
@@ -674,8 +683,12 @@ function renderCeilSummary(Q,totalRoom,m,warns){
       <div class="row"><span>SIZE</span><span><b>${V.D}A</b></span></div>
       <div class="row"><span>OPENING SIZE</span><span><b>${V.open}A</b></span></div>
       <div class="row"><span>VELOCITY</span><span><b>${f2(V.v)} m/s</b></span></div>
-      <div class="row no-print"><span>크기 직접 입력 (φ)</span><span><input class="ti s${S.ventO?' ov':''}" type="text" inputmode="decimal" value="${V.D}" onchange="ventSet(this.value)"></span></div>
-      <p class="note">벤트캡 = 연결 덕트 지름 (OPENING = +50). KDS 4.4 루버 면적식은 기본값 0.4 ㎡ 라 소형 원형 배기구에 쓰지 않음 (판단).</p></div>
+      <div class="row" style="border-top:1px dashed var(--border);margin-top:4px;padding-top:6px"><span>유효풍속 / 기준</span><span>${f2(V.vEff)} / ${f1(V.V)} m/s <span class="badge ${V.ok?'b-ok':'b-red'}">${V.ok?'OK':'초과'}</span></span></div>
+      <div class="row"><span>필요 지름</span><span>φ${f0(V.need)} → ${V.D}A</span></div>
+      ${V.red?`<div class="row"><span>덕트 φ${m.d} → ${V.D}A 확대 (한쪽 15°)</span><span>${f0(V.red)} mm 이상</span></div>`:''}
+      <div class="row no-print"><span>기준 유효풍속 · 개구율</span><span><input class="ti s${S.ventV!==4?' ov':''}" type="text" inputmode="decimal" value="${f1(V.V)}" onchange="setSys('ventV',this.value)"> <input class="ti s${S.ventOpen!==1?' ov':''}" type="text" inputmode="decimal" value="${f2(V.a)}" onchange="setSys('ventOpen',this.value)"></span></div>
+      <div class="row no-print"><span>크기 직접 입력 (A)</span><span><input class="ti s${S.ventO?' ov':''}" type="text" inputmode="decimal" value="${V.D}" onchange="ventSet(this.value)"></span></div>
+      <p class="note">기준: 학회 「건축기계설비 설계기준」 표 4.6 배기루버 유효 개구면 풍속 4.0 m/s · 합류 후 전체 풍량으로 산정. 개구율 = 방충망·후드 형상에 따른 유효 개구 비율 (카탈로그 값, 기본 1.0). 참고: KDS 31 25 30 4.4(2) 벽 배기루버 식으로는 ${f3(V.kds)} m² — 원형 벤트캡에는 적용하지 않음 (판단).</p></div>
     <div class="sbox"><h4>보온 · 높이</h4>
       <div class="row"><span>보온 두께</span><span>${insT()} mm${S.insOff?' (없음)':''}</span></div>
       <div class="row"><span>덕트 설치 가능 높이</span><span>${f0(S.ceil)} mm</span></div>
@@ -691,7 +704,8 @@ function renderRef(){
   ${USAGE.map(u=>`<tr><td class="l">${u[1]}</td><td>${u[2]}</td><td>${u[3]}</td><td>${u[4]}</td><td>${u[5]}</td><td>${u[6]}</td></tr>`).join('')}</tbody></table></div>
   <ul style="margin-top:6px"><li>취출구·흡입구: ASHRAE HVAC Applications 소음 장 「유효개구면 최대 권장풍속」(RC 25~45) 계열. 학회 「건축기계설비 설계기준」 표 3.53 허용 취출풍속 상한(주거 4 · 사무 일반 6 등) 이내.</li>
   <li>환기 전용 계통의 실내 흡입구는 학회 표 4.6 의 2.0 m/s 를 우선 (화장실 천장은 3.0).</li>
-  <li>화장실·샤워실 덕트 값은 설계 기본값. 천정형팬은 팬 접속구 지름에서 시작해 합류하며 벤트캡 = 연결 덕트 지름.</li>
+  <li>화장실·샤워실 덕트 값은 설계 기본값. 천정형팬은 팬 접속구 지름에서 시작해 합류한다.</li>
+  <li>벤트캡: 학회 표 4.6 배기루버 유효 개구면 풍속 4.0 m/s 이하, 합류 후 전체 풍량 기준, 연결 덕트보다 작지 않게.</li>
   <li>덕트: 설계 기본값. KDS 31 25 30 4.1(12) 주덕트 15 m/s 이하 = 저속덕트.</li>
   <li>최종 규격은 제조사 성능자료(NC · 도달거리 · 압력손실)로 확인.</li></ul>
   <h4>판두께 (mm) — 교재값, KCS 31 20 20 원문 대조 필요</h4>
@@ -708,7 +722,7 @@ function renderRef(){
 
 // ── 이벤트 ───────────────────────────────────────────────────
 function setSys(k,v){
-  if(['ceil','regOpen','grilleOpen','louverOpen','fitGap'].includes(k)){ const x=num(v); if(x==null||x<0||(x===0&&k!=='fitGap')) return render(); S[k]=x; }
+  if(['ceil','regOpen','grilleOpen','louverOpen','fitGap','ventV','ventOpen'].includes(k)){ const x=num(v); if(x==null||x<0||(x===0&&k!=='fitGap')) return render(); S[k]=x; }
   else S[k]=v;
   if(k==='device'){
     if(v==='ceiling'){ S.shape='round'; S.mode='exhaust'; }
