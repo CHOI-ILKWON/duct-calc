@@ -140,18 +140,53 @@ const USAGE=[
   ['com',   '상업·판매시설',      6.0, 4.5, 3.0, 2.8, 3.4],
   ['fac',   '일반 공장',          7.5, 5.0, 3.5, 3.2, 3.8],
   ['wc',    '화장실·샤워실',      5.0, 4.0, 3.0, 2.5, 3.0],
+  ['mech',  '기계실·창고 (비상주)',7.5, 5.0, 3.5, 3.2, 3.8],
 ];
-// 화장실 흡입구 3.0 = 학회 표 4.6 「화장실(천장)」 유효풍속. 덕트 값은 설계 기본값(판단)
+// 덕트 값은 설계 기본값(권장·판단). 기구 값은 아래 RC 표에서 온다
 const U=k=>USAGE.find(u=>u[0]===k)||USAGE[4];
+// 기구 자유개구면 풍속 [취출구, 흡입구] — ASHRAE 2019 HVAC Applications Ch.49 Table 9 (설계 소음 목표 RC(N)).
+//   제품 소음자료가 없을 때 쓰는 예비 선정값. 용도는 초기 RC 를 불러오는 역할만 한다
+const RC={25:[1.8,2.2],30:[2.2,2.5],35:[2.5,3.0],40:[2.8,3.4],45:[3.2,3.8]};
+const RC_DEF={studio:25,res:30,hosp:30,offp:30,off:35,com:40,fac:45,wc:35,mech:45};
+const rcOf=r=>r.rc||RC_DEF[r.usage]||35;
 // 덕트 풍속 상한 [메인, 분기] — 내진 회피로 풍속을 올릴 때 넘지 않는 값 (말단은 올리지 않음)
 //   주거 5 / 3 · 사무 8 / 6.5 · 공장 12 / 9 = 해외 저속덕트 최대값 계열 (Engineering ToolBox · Carrier, 기억 포함).
 //   그 밖의 용도는 설계 기본값과 위 값 사이에서 정한 판단값. 방송실은 올리지 않는다
-const VMAX={studio:[4.0,3.0],res:[5.0,3.0],hosp:[6.0,4.5],offp:[6.5,5.0],off:[8.0,6.5],com:[8.0,6.5],fac:[12.0,9.0],wc:[6.0,5.0]};
-const SEIS=0.6;   // 내진 면제 경계 단면적 ㎡ (AC-079 Rule 3)
+const VMAX={studio:[4.0,3.0],res:[5.0,3.0],hosp:[6.0,4.5],offp:[6.5,5.0],off:[8.0,6.5],com:[8.0,6.5],fac:[12.0,9.0],wc:[6.0,5.0],mech:[12.0,9.0]};
+// 내진: KDS 41 17 00 18.4.5 소단면 예외의 단면적 조건 (0.6 ㎡ 미만). 중량·고정·용도 등 다른 조건이 함께 있어 면적만으로 면제 확정하지 않음
+const SEIS=0.6;
 const SEG_COL={main:2,branch:3,term:4};
 const SEG_NAME={main:'메인',branch:'분기',term:'말단'};
-// 학회 표 4.6 — 환기용 실내 흡입구(그릴) 유효풍속 2.0 m/s. 환기 전용 계통이면 표값보다 우선
-const VENT_RET=2.0;
+// 학회 「건축기계설비 설계기준」 표 4.6 — 공동주택 환기 문맥. 흡입구 실내 2.0 · 복도 3.0 · 화장실 천장 3.0 m/s.
+//   「공동주택 환기 (표 4.6)」 옵션을 켰을 때만 적용. 기계실·공장에는 적용하지 않음
+const APT_IN=2.0, APT_WC=3.0;
+// 덕트 마찰손실 (Pa/m) — ASHRAE 등마찰법 0.4~1.6 Pa/m 범위의 설계 초기값. 법정 상한 아님
+const pamWarn=()=>S.pamW||(isCeil()||S.device==='hrv'?1.0:1.5);
+function pamOf(flow,dims){
+  // 각형은 상당지름 De = 1.30(ab)^0.625/(a+b)^0.25. Altshul–Tsal 마찰계수 (ASHRAE Fundamentals Duct Design), ε 0.09 mm, 공기 1.2 kg/m³
+  const D=(dims.d?dims.d:1.30*Math.pow(dims.w*dims.h,0.625)/Math.pow(dims.w+dims.h,0.25))/1000;
+  if(!(D>0)||!(flow>0)) return 0;
+  const V=flow/3600/(Math.PI*D*D/4), Re=V*D/1.5e-5; let f=0.11*Math.pow(0.09e-3/D+68/Re,0.25); if(f<0.018) f=0.85*f+0.0028;
+  return f/D*1.2*V*V/2;
+}
+// 변형부(리듀서) 각도 — 한쪽 경사각 기준 [축소, 확대]
+//   side  = 한쪽 축소 30° · 확대 15° (KCS 31 20 20 3.1.2 수치 · USFK O&MA 시방 2.11.1.1 의 「각 측면」 정의)
+//   ashrae= 전체각 15° 이하 (ASHRAE Fundamentals Ch.21 권장) → 한쪽 7.5°
+//   proj  = 프로젝트 상세도·시방 지정값
+function redAngles(){
+  if(S.redMode==='ashrae') return {c:7.5,e:7.5,name:'전체각 15° (ASHRAE 권장)'};
+  if(S.redMode==='proj') return {c:S.redAng[0],e:S.redAng[1],name:`프로젝트 지정 · 한쪽 축소 ${S.redAng[0]}° · 확대 ${S.redAng[1]}°`};
+  return {c:30,e:15,name:'한쪽 축소 30° · 확대 15°'};
+}
+// up → dn = 공기 흐름 방향. 면마다 이동량을 따로 보고 큰 길이를 쓴다
+//   폭: 대칭형이면 ΔW/2, 편심형(한쪽 면 일직선)이면 ΔW · 높이: 한쪽 면(밑면 또는 윗면) 맞춤 → ΔH · 원형: 동심 ΔD/2
+function transLen(up,dn,round){
+  const A=redAngles(), t=x=>Math.tan(x*Math.PI/180); let L=0; const k=new Set();
+  const face=d=>{ if(Math.abs(d)<1) return; const ex=d>0; k.add(ex?'확대':'축소'); L=Math.max(L,Math.abs(d)/t(ex?A.e:A.c)); };
+  if(round) face((dn.d-up.d)/2);
+  else { face((dn.w-up.w)/(S.redShape==='ecc'?1:2)); face(dn.h-up.h); }
+  return L?{raw:L,L:Math.max(300,ceil50(L)),kind:[...k].join('·')}:null;   // 300 = 사내 제작 최소값
+}
 
 // 보온 — KCS 31 20 05 덕트 보온두께 (내부 10~40℃, RH 75% 미만). 열전도율 등급으로 정함
 const INS={ga:[20,'가 λ0.030~0.034'],na:[25,'나 λ0.035~0.040'],da:[30,'다 λ0.041~0.046'],ra:[35,'라 λ0.047~0.051']};
@@ -174,8 +209,9 @@ function pickStd(list,mm){ for(const d of list) if(d>=mm-1e-6) return d; return 
 // ── 상태 ─────────────────────────────────────────────────────
 const KEY='duct-calc-v2';
 let _n=0; const uid=p=>p+Date.now().toString(36).slice(-4)+(++_n).toString(36);
-function blank(){ return {v:2,project:'',mode:'supply',shape:'rect',device:'inline',ventOnly:true,ceil:600,
-  insGrade:'na',epi:true,insOff:false,seisAvoid:true,mount:'bottom',fitGap:75,fitV2:true,ventV:4.0,ventOpen:0.7,regOpen:0.65,grilleOpen:0.70,louverOpen:0.50,louverV:null,louverO:{w:null,h:null},
+function blank(){ return {v:2,project:'',mode:'supply',shape:'rect',device:'inline',apt46:false,rcV:true,ceil:600,
+  insGrade:'na',epi:true,insOff:false,mount:'bottom',fitGap:75,fitV2:true,ventV:4.0,ventOpen:0.7,regOpen:0.65,grilleOpen:0.70,louverOpen:0.50,louverV:null,louverO:{w:null,h:null},
+  redMode:'side',redShape:'conc',redAng:[30,15],pamW:null,
   rooms:[],zones:[]}; }
 let S=blank();
 const $=id=>document.getElementById(id);
@@ -190,9 +226,13 @@ const isCeil=()=>S.device==='ceiling';
 const termKind=()=>isCeil()?'fan':S.mode==='exhaust'?'grille':(S.shape==='round'?'diff':'reg');
 const KIND_NAME={reg:'레지스터',diff:'디퓨져',grille:'그릴',fan:'천정형팬'};
 function termVelDefault(r){
-  const u=U(r.usage);
-  if(S.mode==='exhaust') return S.ventOnly&&u[0]!=='wc'?Math.min(u[6],VENT_RET):u[6];   // 학회 표 4.6 — 실내 2.0 · 화장실 천장 3.0
-  return u[5];
+  const v=RC[rcOf(r)]||RC[35];
+  if(S.mode==='exhaust'){
+    // 공동주택 환기 (표 4.6) 옵션 — 화장실 천장 3.0, 거실·침실 등 실내 2.0. 기계실·공장은 제외
+    if(S.apt46){ if(r.usage==='wc') return Math.min(v[1],APT_WC); if(r.usage!=='mech'&&r.usage!=='fac') return Math.min(v[1],APT_IN); }
+    return v[1];
+  }
+  return v[0];
 }
 // 사각 기구 크기 — 필요 겉면적 이상 중 가장 작은 것, 아스펙트비 3 이하
 // low = 덕트 직부 — 기구 짧은 변이 덕트 폭(하부)·높이(측면)를 정하므로 짧은 변이 가장 작은 것을 고른다
@@ -267,7 +307,8 @@ function normalize(){
     });
   }
 }
-const hMax=(c=S.ceil)=>Math.max(100,floor50(c-45-55-2*insT()-2*0.5));
+const hMax=(c=S.ceil,ins=insT())=>Math.max(100,floor50(c-45-55-2*ins-2*0.5));
+const zIns=z=>z&&z.insOff?0:insT();
 const zCeil=z=>(z&&z.ceil)||S.ceil;
 // 기구 양쪽 여유 합 — 덕트 안치수 ≥ 기구 + 여유 × 2.
 //   한쪽 75 mm = 사내 시공 관행 (레지스터 테두리 25~30 + 덕트 모서리 이음부를 피한 피스 자리 15~20 + 보온 마감·오차).
@@ -275,7 +316,7 @@ const zCeil=z=>(z&&z.ceil)||S.ceil;
 const GAP=()=>2*(S.fitGap??75);
 
 function sizeSeg(flow,V,ctx,ov){
-  const A=flow/3600/V, ins=insT();
+  const A=flow/3600/V, ins=ctx.ins??insT();
   const cap=ctx.cap||{w:1e9,h:1e9,d:1e9};
   if(S.shape==='round'){
     const need=Math.max(Math.sqrt(4*A/Math.PI)*1000,ctx.minD||0,ctx.mD||0);
@@ -283,10 +324,10 @@ function sizeSeg(flow,V,ctx,ov){
     if(!ov.d&&d>cap.d){ d=cap.d; capped=true; }
     const area=Math.PI*d*d/4/1e6, p=plateRound(d), m=marginRound(d);
     const oD=d+2*p+2*ins;
-    return {A,d,area,vAct:flow/3600/area,ar:1,plate:p,ins,m,outW:oD,outH:oD,totW:oD+m.l+m.r,totH:oD+m.t+m.b,dim:'φ'+f0(d),ceil:ctx.ceil,
+    return {A,d,area,vAct:flow/3600/area,pam:pamOf(flow,{d}),ar:1,plate:p,ins,m,outW:oD,outH:oD,totW:oD+m.l+m.r,totH:oD+m.t+m.b,dim:'φ'+f0(d),ceil:ctx.ceil,
       rev:d<(ctx.minD||0)-1e-6,mountBad:ctx.mD&&d<ctx.mD-1e-6,capped,fixed:!!ov.d||capped};
   }
-  const HM=Math.min(hMax(ctx.ceil),cap.h), need=Math.max(A,ctx.minArea||0);
+  const HM=Math.min(hMax(ctx.ceil,ins),cap.h), need=Math.max(A,ctx.minArea||0);
   let h=ov.h||Math.max(ctx.hPrev||0,ctx.hIn||0)||Math.min(HM,Math.max(100,ceil50(Math.sqrt(A)*1000)));
   if(!ov.h&&ctx.mH) h=Math.max(h,ceil50(ctx.mH));          // 측면 직부: 덕트 높이 ≥ 기구 높이 + 여유 × 2
   if(!ov.h&&h>cap.h) h=cap.h;                               // 팬 쪽에서 크기를 고정한 줄보다 크지 않게
@@ -302,7 +343,7 @@ function sizeSeg(flow,V,ctx,ov){
   const capped=(!ov.w&&w>=cap.w-1e-6&&cap.w<1e9&&w*h<need*1e6-1)||(!ov.h&&h>=cap.h-1e-6&&cap.h<1e9&&w*h<need*1e6-1);
   const area=w*h/1e6, L=Math.max(w,h), p=plateRect(L), m=marginRect(L);
   const outW=w+2*p+2*ins, outH=h+2*p+2*ins;
-  return {A,w,h,area,vAct:flow/3600/area,ar:L/Math.min(w,h),plate:p,ins,m,outW,outH,totW:outW+m.l+m.r,totH:outH+m.t+m.b,auto,dim:f0(w)+'×'+f0(h),ceil:ctx.ceil,
+  return {A,w,h,area,vAct:flow/3600/area,pam:pamOf(flow,{w,h}),ar:L/Math.min(w,h),plate:p,ins,m,outW,outH,totW:outW+m.l+m.r,totH:outH+m.t+m.b,auto,dim:f0(w)+'×'+f0(h),ceil:ctx.ceil,
     rev:area<(ctx.minArea||0)-1e-9&&!capped,mountBad:(ctx.mW&&w<ctx.mW-1e-6)||(ctx.mH&&h<ctx.mH-1e-6),capped,
     fixed:!!ov.w||!!ov.h||(cap.w<1e9&&w>=cap.w-1e-6)||(cap.h<1e9&&h>=cap.h-1e-6)};
 }
@@ -342,7 +383,9 @@ function calcZone(zid,stack=[]){
     if(!outlets.length){ segs.push({row,empty:true}); continue; }
     const flow=outlets.reduce((s,o)=>s+(+o.room.flow||0)/Math.max(1,o.room.count|0),0);
     // 메인 = 두 실 이상을 싣거나, 계통의 모든 기구를 싣는 구간(팬 ~ 첫 분기)
-    const type=rooms.size>=2||(outlets.length>1&&outlets.length>=TOTAL_O)?'main':(outlets.length===1?'term':'branch');
+    //   앱의 편의상 분류. 실제 역할이 다르면 줄마다 직접 바꾼다 (row.tO)
+    const typeAuto=rooms.size>=2||(outlets.length>1&&outlets.length>=TOTAL_O)?'main':(outlets.length===1?'term':'branch');
+    const type=row.tO||typeAuto;
     // 그 구간이 담당하는 실 중 가장 조용해야 하는 실의 풍속 (가장 낮은 값)
     const V=row.vO||Math.min(...[...rooms].map(id=>U((S.rooms.find(r=>r.id===id)||{}).usage)[SEG_COL[type]]));
     const lasts=subs.map(s=>s.last).filter(Boolean);
@@ -355,17 +398,20 @@ function calcZone(zid,stack=[]){
       else if(S.mount==='bottom') mc.mW=Math.max(mc.mW,t.h+GAP());
       else mc.mH=Math.max(mc.mH,t.h+GAP());
     }
-    const ctx={ceil:zCeil(z),cap:(CAP[zid]||[])[z.rows.indexOf(row)],...mc,hPrev:prev?prev.h:0,wPrev:prev?prev.w:0,hIn:Math.max(0,...lasts.map(l=>l.h||0)),
+    const ctx={ceil:zCeil(z),ins:zIns(z),cap:(CAP[zid]||[])[z.rows.indexOf(row)],...mc,hPrev:prev?prev.h:0,wPrev:prev?prev.w:0,hIn:Math.max(0,...lasts.map(l=>l.h||0)),
       minArea:Math.max(prev?prev.area:0,...lasts.map(l=>l.area)),minD:Math.max(prev?prev.d||0:0,...lasts.map(l=>l.d||0))};
     const ov={w:row.wO,h:row.hO,d:row.dO};
-    let sz=sizeSeg(flow,V,ctx,ov), Vu=V, seis=null;
-    // 내진 회피 — 단면적이 경계 이상이면 실 용도별 상한까지 0.5 m/s 씩 풍속을 올려 경계 아래로 들어오는 첫 값을 쓴다
-    if(S.seisAvoid&&sz.area>=SEIS&&type!=='term'&&!row.vO&&!row.wO&&!row.hO&&!row.dO){
-      const vmax=Math.min(...[...rooms].map(id=>(VMAX[(S.rooms.find(r=>r.id===id)||{}).usage]||VMAX.off)[type==='main'?0:1]));
-      seis={vmax,ok:false};
-      for(let v=Math.ceil((V+0.01)*2)/2;v<=vmax+1e-9;v+=0.5){ const t=sizeSeg(flow,v,ctx,ov); if(t.area<SEIS){ sz=t; Vu=v; seis.ok=true; break; } }
+    const sz=sizeSeg(flow,V,ctx,ov);
+    // 구간 풍속 상한 (사내 소음·저항 상한) — 담당 실 중 가장 낮은 값. 선정 후 실제 풍속으로 재검사
+    const vmax=Math.min(...[...rooms].map(id=>(VMAX[(S.rooms.find(r=>r.id===id)||{}).usage]||VMAX.off)[type==='main'?0:1]));
+    // 내진 축소안 — 자동 적용하지 않는다. 상한 이내에서 0.5 m/s 씩 올려 0.6 ㎡ 미만이 되는 첫 규격을 「제안」으로만 계산
+    //   실제 풍속이 상한을 넘는 규격은 제외 (예: H 500 고정·상한 8 → 1,150×500 은 8.16 m/s 라 탈락)
+    let alt=null;
+    if(sz.area>=SEIS&&type!=='term'&&!row.vO&&!row.wO&&!row.hO&&!row.dO){
+      alt={none:true,blocked:(ctx.minArea||0)>=SEIS-1e-9};   // 앞 구간(하류)이 이미 0.6 이상이면 그보다 작게 못 줄임
+      for(let v=Math.ceil((V+0.01)*2)/2;v<=vmax+1e-9;v+=0.5){ const t=sizeSeg(flow,v,ctx,ov); if(t.area<SEIS&&t.vAct<=vmax+1e-9){ alt=Object.assign({V:v},t); break; } }
     }
-    const seg=Object.assign({row,flow,type,V:Vu,V0:V,seis,cnt:outlets.length,subs:subs.map(s=>s.zid),direct:row.items.filter(it=>it.t==='o'&&om[it.k]).map(it=>om[it.k].room.id)},sz);
+    const seg=Object.assign({row,flow,type,typeAuto,V,V0:V,vmax,alt,cnt:outlets.length,subs:subs.map(s=>s.zid),direct:row.items.filter(it=>it.t==='o'&&om[it.k]).map(it=>om[it.k].room.id)},sz);
     segs.push(seg); prev=seg;
   }
   const res={zid,flow:prev?prev.flow:0,outlets,rooms,segs,last:prev};
@@ -378,10 +424,12 @@ function segChecks(s){
   if(s.rev) c.push(['b-red','치수 역전']);
   if(s.mountBad) c.push(['b-red','기구 안 들어감']);
   if(s.capped) c.push(['b-warn','팬 쪽 고정 크기에 맞춤']);
-  if(s.vAct>s.V*1.05) c.push(['b-warn','기준 풍속 초과']);
-  if(s.area>=SEIS) c.push(['b-warn',s.seis?'내진 대상 (상한까지 올려도)':'내진 대상']);
-  else if(s.seis&&s.seis.ok) c.push(['b-info',`내진 회피 · 풍속 ${f1(s.V0)}→${f1(s.V)}`]);
-  if(s.vAct>15) c.push(['b-red','15 m/s 초과']);
+  if(s.vAct>s.V*1.05) c.push(['b-warn','목표 풍속 초과']);
+  if(s.vAct>s.vmax+1e-6) c.push(['b-red',`상한 ${f1(s.vmax)} 초과`]);
+  if(s.pam>pamWarn()+1e-9) c.push(['b-warn',`${f2(s.pam)} Pa/m 목표 초과`]);
+  if(s.area>=SEIS) c.push(['b-warn','내진 검토 필요'+(s.alt&&!s.alt.none?' · 축소안 있음':'')]);
+  else if(s.row&&s.row.seisAdopt) c.push(['b-info','내진 축소안 채택 (면제 미확정)']);
+  if(s.vAct>15) c.push(['b-red','15 m/s 초과 (KDS 저속덕트)']);
   if(s.auto) c.push(['b-info','높이 자동']);
   return c;
 }
@@ -389,10 +437,12 @@ function segChecks(s){
 // ── 루버 · 팬 ───────────────────────────────────────────────
 // 기준: KDS 31 25 30 4.4 — 3,300 L/s 이상은 전면풍속(외기 2.0 / 배기 2.5 m/s),
 //   미만은 전면면적 A = 0.4 + kQ (외기 k=0.00036, 배기 k=0.00025). 개구율 45% 이하는 별도 산정.
-//   배기 식은 원문에 구간(3,300 이상 / 2,400 미만)과 「/」 오탈자가 있어 원문 재검증 필요.
+//   배기는 원문이 3,300 이상 / 2,400 미만만 정하고 2,400~3,300 L/s 가 비어 있다 (2026판에서도 같음).
+//   그 구간은 「미명시 구간의 설계 보완」으로 A = max(0.4 + 0.00025Q, Q/2.5) — 원문 오기 수정이 아님.
 function calcLouver(Qcmh,exArg){
-  const ex=exArg??S.mode==='exhaust', Ls=Qcmh/3.6;
+  const ex=exArg??S.mode==='exhaust', Ls=Qcmh/3.6, gap=ex&&Ls>=2400&&Ls<3300;
   let A=Ls>=3300?Qcmh/3600/(ex?2.5:2.0):0.4+(ex?0.00025:0.00036)*Ls, adj=false;
+  if(gap) A=Math.max(A,Qcmh/3600/2.5);
   // 개구율 45% 이하 — 45% 루버와 같은 유효면적이 되도록 키운다 (해석)
   if(S.louverOpen<=0.45){ A=A*0.45/S.louverOpen; adj=true; }
   // 목표 전면풍속 (선택) — KDS 면적보다 크게만 잡는다. 더 빠르게는 KDS 가 상한
@@ -403,7 +453,8 @@ function calcLouver(Qcmh,exArg){
   let h=oH||(oW?Math.max(100,ceil50(A*1e6/oW)):s), w=oW||Math.max(ceil50(A*1e6/h),100);
   if(!oW&&!oH&&w<h) [w,h]=[h,w];   // 자동이면 가로를 긴 쪽으로
   const area=w*h/1e6;
-  return {ex,Ls,A,adj,Akds,tgt,byTgt,tgtCapped:!!tgt&&!byTgt,w,h,area,vFace:Qcmh/3600/area,ok:area>=A-1e-6,rule:Ls>=3300?'전면풍속 '+(ex?'2.5':'2.0')+' m/s 이하':'A = 0.4 + '+(ex?'0.00025':'0.00036')+' × Q'};
+  return {ex,Ls,A,adj,Akds,tgt,byTgt,gap,tgtCapped:!!tgt&&!byTgt,w,h,area,vFace:Qcmh/3600/area,vFree:Qcmh/3600/area/S.louverOpen,ok:area>=A-1e-6,
+    rule:Ls>=3300?'전면풍속 '+(ex?'2.5':'2.0')+' m/s 이하':gap?'max(0.4 + 0.00025Q, Q/2.5) · 설계 보완':'A = 0.4 + '+(ex?'0.00025':'0.00036')+' × Q'};
 }
 
 // 벤트캡 (천정형팬 계통의 외벽 끝단)
@@ -415,7 +466,7 @@ const VENT=[100,125,150,200,250,300,350,400,450,500,550,600,650,700,750,800,900,
 function calcVent(Q,d){
   const V=S.ventV||4.0, a=S.ventOpen||0.7, need=Math.sqrt(4*Q/3600/(V*a)/Math.PI)*1000;
   const D=S.ventO||pickStd(VENT,Math.max(need,d||0)), area=Math.PI*D*D/4/1e6;
-  const vEff=Q/3600/(area*a), red=d&&D>d?(D-d)/2/Math.tan(15*Math.PI/180):0;
+  const vEff=Q/3600/(area*a), tr=d&&D>d?transLen({d},{d:D},true):null, red=tr?tr.L:0;
   return {D,open:D+50,v:Q/3600/area,vEff,V,a,need,ok:vEff<=V+1e-6,red,kds:0.4+0.00025*Q/3.6};
 }
 
@@ -442,31 +493,36 @@ function renderSys(){
       <label class="chk"><input type="checkbox" ${S.epi?'checked':''} onchange="setSys('epi',this.checked)">EPI 7번 (+20%)</label>
       <label class="chk" style="height:auto"><input type="checkbox" ${S.insOff?'checked':''} onchange="setSys('insOff',this.checked)">보온 없음</label>
       <span class="fh">적용 보온 두께 <b>${t} mm</b></span></div>
-    <div class="fg"><span class="fl">내진 회피</span><label class="chk"><input type="checkbox" ${S.seisAvoid?'checked':''} onchange="setSys('seisAvoid',this.checked)">단면적 0.6 m² 이상이면 풍속을 상한까지 올림</label><span class="fh">메인·분기만 · 실 용도별 상한 이내</span></div>
-    ${isCeil()?'':`<div class="fg"><span class="fl">기구 개구율 (레지스터 / 그릴)</span><div style="display:flex;gap:6px"><input class="fi" style="width:50%" type="text" inputmode="decimal" step="0.05" value="${S.regOpen}" onchange="setSys('regOpen',this.value)"><input class="fi" style="width:50%" type="text" inputmode="decimal" step="0.05" value="${S.grilleOpen}" onchange="setSys('grilleOpen',this.value)"></div><span class="fh">카탈로그 값 우선 · OBD 부착 시 낮아짐</span></div>
+    <div class="fg"><span class="fl">리듀서 각도 기준</span>${sel([['side','한쪽 축소 30° · 확대 15°'],['ashrae','전체각 15° (ASHRAE 권장)'],['proj','프로젝트 지정']],S.redMode,"setSys('redMode',this.value)")}
+      ${S.redMode==='proj'?`<div style="display:flex;gap:6px;align-items:center;font-size:12px">한쪽 축소 <input class="ti s" type="text" inputmode="decimal" value="${S.redAng[0]}" onchange="setRedAng(0,this.value)">° 확대 <input class="ti s" type="text" inputmode="decimal" value="${S.redAng[1]}" onchange="setRedAng(1,this.value)">°</div>`:''}
+      <span class="fh">${S.redMode==='side'?'KCS 31 20 20 3.1.2 수치 · 각 측면 기준 (USFK 시방 정의)':S.redMode==='ashrae'?'손실·소음 저감용 완만한 권장 — 길이 약 4~7배':'승인된 상세도·시방의 각도'}</span></div>
+    ${isCeil()?'':`<div class="fg"><span class="fl">리듀서 폭 방향 형상</span>${sel([['conc','대칭형 (양쪽 ΔW/2)'],['ecc','편심형 (한쪽 면 일직선, ΔW)']],S.redShape,"setSys('redShape',this.value)")}<span class="fh">높이는 한쪽 면 맞춤 (ΔH) · 최소 300 mm = 사내값</span></div>`}
+    <div class="fg"><span class="fl">마찰손실 경고 (Pa/m)</span><input class="fi" type="text" inputmode="decimal" placeholder="${pamWarn()}" value="${S.pamW??''}" onchange="setSys('pamW',this.value)"><span class="fh">비우면 ${isCeil()||S.device==='hrv'?'1.0 (HRV·천장팬 사내 검토값)':'1.5'} · ASHRAE 0.4~1.6 범위 · 법정 상한 아님</span></div>
+    ${isCeil()?'':`<div class="fg"><span class="fl">기구 개구율 (레지스터 / 그릴) <span class="badge b-warn">예비</span></span><div style="display:flex;gap:6px"><input class="fi" style="width:50%" type="text" inputmode="decimal" step="0.05" value="${S.regOpen}" onchange="setSys('regOpen',this.value)"><input class="fi" style="width:50%" type="text" inputmode="decimal" step="0.05" value="${S.grilleOpen}" onchange="setSys('grilleOpen',this.value)"></div><span class="fh">제품 미선정 가정 — 제품 자료의 개구율(자유면적 ÷ 기준면적)로 교체</span></div>
     <div class="fg"><span class="fl">기구 접속 방식</span>${sel(S.shape==='round'
         ?[['collar','칼라·플렉시블 (제약 없음)'],['bottom','덕트 직부 (지름 ≥ 기구)']]
         :[['collar','칼라·플렉시블 (제약 없음)'],['bottom','덕트 하부 직부'],['side','덕트 측면 직부']],S.mount==='side'&&S.shape==='round'?'bottom':S.mount,"setSys('mount',this.value)")}
       <span class="fh">${S.mount==='collar'?'기구와 덕트 치수 연동 없음':S.shape==='round'?'기구가 붙는 줄의 덕트 지름 ≥ 기구 + 여유 × 2':S.mount==='bottom'?'기구가 붙는 줄의 덕트 폭 ≥ 기구 단변 + 여유 × 2':'덕트 높이 ≥ 기구 높이 + 여유 × 2 · 기구는 낮고 넓게'}</span></div>
-    ${S.mount==='collar'?'':`<div class="fg"><span class="fl">기구 여유 (한쪽, mm)</span><input class="fi" type="text" inputmode="decimal" value="${f0(S.fitGap??75)}" onchange="setSys('fitGap',this.value)"><span class="fh"${(S.fitGap??75)<50?' style="color:var(--red)"':''}>${(S.fitGap??75)<50?'50 mm 미만 — 레지스터 테두리가 덕트 이음부에 걸릴 수 있음':`덕트 안치수 = 기구 + ${f0(GAP())} mm 이상 · 표준 75 · 최소 50`}</span></div>`}
+    ${S.mount==='collar'?'':`<div class="fg"><span class="fl">기구 여유 (한쪽, mm) <span class="badge b-info">사내</span></span><input class="fi" type="text" inputmode="decimal" value="${f0(S.fitGap??75)}" onchange="setSys('fitGap',this.value)"><span class="fh"${(S.fitGap??75)<50?' style="color:var(--red)"':''}>${(S.fitGap??75)<50?'50 mm 미만 — 레지스터 테두리가 덕트 이음부에 걸릴 수 있음':`덕트 안치수 = 기구 + ${f0(GAP())} mm 이상 · 표준 75 · 최소 50`}</span></div>`}
     <div class="fg"><span class="fl">외벽 루버 개구율 (외기·배기)</span><input class="fi" type="text" inputmode="decimal" step="0.05" value="${S.louverOpen}" onchange="setSys('louverOpen',this.value)"><span class="fh">0.45 이하면 면적 보정 (KDS 4.4)</span></div>`}
-    ${S.mode==='exhaust'&&!isCeil()?`<div class="fg"><span class="fl">흡입구 기준</span><label class="chk"><input type="checkbox" ${S.ventOnly?'checked':''} onchange="setSys('ventOnly',this.checked)">환기 전용 계통 (실내 흡입구 2.0 m/s)</label><span class="fh">학회 표 4.6 · 공조 계통이면 해제</span></div>`:''}
+    ${S.mode==='exhaust'&&!isCeil()?`<div class="fg"><span class="fl">흡입구 기준</span><label class="chk"><input type="checkbox" ${S.apt46?'checked':''} onchange="setSys('apt46',this.checked)">공동주택 환기 (학회 표 4.6)</label><span class="fh">켜면 실내 2.0 · 화장실 천장 3.0 m/s 상한. 기계실·공장 제외</span></div>`:''}
   </div>`;
 }
 function renderRooms(){
   const kind=termKind(), list=S.rooms;
   if(kind==='fan') return renderFans();
-  $('roomSub').textContent=`${KIND_NAME[kind]} · 개당 풍량은 실 풍량 ÷ 개수 · 유효풍속 기준`;
+  $('roomSub').textContent=`${KIND_NAME[kind]} · 개당 풍량은 실 풍량 ÷ 개수 · 유효풍속 = 자유개구면 기준 (ASHRAE RC 표, 예비 선정값)`;
   if(!list.length){ $('roomBox').innerHTML=`<div class="empty">실을 추가하거나 상단의 「예시」를 눌러 보세요.</div>`; return; }
   const isD=kind==='diff';
   let h=`<div class="tw"><table class="t"><thead><tr>
-    <th>실명</th><th>용도</th><th>풍량<br>(CMH)</th><th>${KIND_NAME[kind]}<br>개수</th><th>개당 풍량<br>(CMH)</th>
-    <th>유효풍속<br>(m/s)</th><th>필요 유효면적<br>(m²)</th>${isD?'':`<th>개구율</th><th>필요 겉면적<br>(m²)</th>`}
+    <th>실명</th><th>용도</th><th>소음 목표</th><th>풍량<br>(CMH)</th><th>${KIND_NAME[kind]}<br>개수</th><th>개당 풍량<br>(CMH)</th>
+    <th>유효풍속<br>(m/s, 자유개구면)</th><th>필요 유효면적<br>(m²)</th>${isD?'':`<th>개구율</th><th>필요 겉면적<br>(m²)</th>`}
     <th colspan="${isD?1:2}">${isD?'넥 φ (개략)':'선정 크기 W × H (mm)'}</th><th>실제 유효풍속<br>(m/s)</th>${isD?'':'<th>면풍속<br>(m/s)</th>'}<th>판정</th><th></th></tr></thead><tbody>`;
   for(const r of list){
     const c=calcTerm(r);
     h+=`<tr><td><input class="ti w" value="${esc(r.name)}" onchange="roomSet('${r.id}','name',this.value)"></td>
       <td><select class="ti" style="width:150px" onchange="roomSet('${r.id}','usage',this.value)">${USAGE.map(u=>`<option value="${u[0]}"${u[0]===r.usage?' selected':''}>${u[1]}</option>`).join('')}</select></td>
+      <td><select class="ti${r.rc?' ov':''}" style="width:96px" onchange="roomSet('${r.id}','rc',this.value)">${Object.keys(RC).map(k=>`<option value="${k}"${+k===rcOf(r)?' selected':''}>RC ${k}${+k===RC_DEF[r.usage]?' (기본)':''}</option>`).join('')}</select></td>
       <td><input class="ti n" type="text" inputmode="decimal" value="${f0(r.flow)}" onchange="roomSet('${r.id}','flow',this.value)"></td>
       <td><input class="ti s" type="text" inputmode="decimal" min="1" value="${r.count}" onchange="roomSet('${r.id}','count',this.value)"></td>
       <td class="cv">${f0(c.q)}</td>
@@ -480,7 +536,7 @@ function renderRooms(){
       <td><span class="badge ${c.ok?'b-ok':'b-red'}">${c.ok?'OK':'풍속 초과'}</span>${c.limited?' <span class="badge b-info" title="크기가 고정된 덕트에 들어가도록 기구를 낮고 넓게 다시 골랐습니다">덕트에 맞춤</span>':''}</td>
       <td><button class="btn-x" title="삭제" onclick="roomDel('${r.id}')">✕</button></td></tr>`;
   }
-  h+=`</tbody></table></div><p class="note">파란 글씨 = 직접 입력한 값 (지우면 자동값으로 돌아감). W 를 바꾸면 H 가, H 를 바꾸면 W 가 필요 겉면적에 맞춰 자동으로 바뀝니다 (마지막에 바꾼 쪽이 고정). ${isD?'디퓨져는 넥 지름 개략값 — 카탈로그의 넥 풍속·NC·도달거리로 확정.':'크기는 필요 겉면적 이상 중 가장 작은 것 (아스펙트비 3 이하, 50 mm 단위).'}</p>`;
+  h+=`</tbody></table></div><p class="note">파란 글씨 = 직접 입력한 값 (지우면 자동값으로 돌아감). W 를 바꾸면 H 가, H 를 바꾸면 W 가 필요 겉면적에 맞춰 자동으로 바뀝니다 (마지막에 바꾼 쪽이 고정). ${isD?'디퓨져는 넥 지름 개략값 — 카탈로그의 넥 풍속·NC·도달거리로 확정.':'크기는 필요 겉면적 이상 중 가장 작은 것 (아스펙트비 3 이하, 50 mm 단위).'} 소음 목표 RC 는 용도에서 초기값을 불러옵니다 — 상주 인원·인접 실 소음 전달을 보고 정하세요. 필요 겉면적 = 개당 풍량 ÷ (유효풍속 × 개구율). 최종 규격은 제품의 해당 풍량 압력손실·NC·도달거리로 확인.</p>`;
   $('roomBox').innerHTML=h;
 }
 function renderFans(){
@@ -525,6 +581,7 @@ function renderZones(){
       ${isRoot?`<span class="badge b-info">${isCeil()?'벤트캡 연결':'팬 연결'}</span>`:parent?`<span class="badge b-ok">→ ${esc(parent.name)} ${pRow}번 줄에 합류</span>`:'<span class="badge b-warn">미연결 — 다른 ZONE 의 줄에서 「+ 추가」로 붙이세요</span>'}
       <span class="card-s">${f0(res.flow)} CMH · 기구 ${res.outlets.length}개</span>
       <span style="flex:1"></span>
+      <label class="card-s" style="display:flex;gap:3px;align-items:center;cursor:pointer" title="결로 위험이 없는 실내 배기 구간 등"><input type="checkbox" ${z.insOff?'checked':''} onchange="zoneSet('${z.id}','insOff',this.checked)">보온 없음</label>
       <span class="card-s">천장 속</span><input class="ti n${z.ceil?' ov':''}" type="text" inputmode="decimal" step="50" value="${f0(zCeil(z))}" title="이 ZONE 의 덕트 설치 가능 높이 (비우면 기본값)" onchange="zoneSet('${z.id}','ceil',this.value)">
       <button class="btn" onclick="rowAdd('${z.id}')">+ 줄</button>
       <button class="btn-x" title="ZONE 삭제" onclick="zoneDel('${z.id}')">✕</button></div>
@@ -543,7 +600,7 @@ function renderZones(){
       if(!s||s.empty){ h+=`<tr><td>${lab}</td><td class="l"><div class="chips">${chips}${addSel}${br}</div></td><td colspan="${round?6:7}" class="cv">기구 또는 ZONE 을 추가하세요</td><td style="white-space:nowrap">${ctl}</td></tr>`; return; }
       const chk=segChecks(s).map(c=>`<span class="badge ${c[0]}">${c[1]}</span>`).join(' ')||'<span class="badge b-ok">OK</span>';
       h+=`<tr class="${s.type==='main'?'seg-main':''}"><td>${lab}</td><td class="l"><div class="chips">${chips}${addSel}${br}</div></td>
-        <td><b>${f0(s.flow)}</b></td><td>${SEG_NAME[s.type]}</td>
+        <td><b>${f0(s.flow)}</b></td><td><select class="ti${row.tO?' ov':''}" style="width:64px" title="자동: ${SEG_NAME[s.typeAuto]} — 실제 역할(연결 구조·담당 풍량)이 다르면 바꾸세요" onchange="rowType('${z.id}','${row.id}',this.value)">${['main','branch','term'].map(t=>`<option value="${t}"${t===s.type?' selected':''}>${SEG_NAME[t]}</option>`).join('')}</select></td>
         <td><input class="ti s${row.vO?' ov':''}" type="text" inputmode="decimal" step="0.1" value="${f1(s.V)}" onchange="rowSet('${z.id}','${row.id}','vO',this.value)"></td>
         ${round?`<td><input class="ti s${row.dO?' ov':''}" type="text" inputmode="decimal" step="25" value="${f0(s.d)}" onchange="rowSet('${z.id}','${row.id}','dO',this.value)"></td>`
           :`<td><input class="ti s${row.wO?' ov':''}" type="text" inputmode="decimal" step="50" value="${f0(s.w)}" onchange="rowSet('${z.id}','${row.id}','wO',this.value)"></td>
@@ -561,12 +618,12 @@ function renderZones(){
 // 리듀서 길이 — 앞 구간(말단 쪽)과 크기가 다르면. 폭은 동심(양쪽), 높이는 편심(밑면 맞춤), 원형은 동심.
 //   급기는 바람이 좁아지므로 축소 한쪽 30° (a × 1.7), 배기는 넓어지므로 확대 한쪽 15° (a × 3.7).
 //   최소 300 mm, 50 mm 올림. 각도 기준: KDS 31 25 30 4.1(4) → KCS 31 20 20 3.1.2 (원문 대조 필요)
+//   판정은 화면 순서가 아니라 공기 흐름 방향 — 급기는 팬 쪽(s) → 말단 쪽(prev), 배기는 말단 쪽(prev) → 팬 쪽(s)
 function reducerLen(prev,s){
   if(!prev||prev.empty) return null;
-  const a=S.shape==='round'?Math.abs(s.d-prev.d)/2:Math.max(Math.abs(s.w-prev.w)/2,Math.abs(s.h-prev.h));
-  if(a<1) return null;
-  const ex=S.mode==='exhaust', k=ex?1/Math.tan(15*Math.PI/180):1/Math.tan(30*Math.PI/180);
-  return {L:Math.max(300,ceil50(a*k)),ex,a,from:prev.dim};
+  const round=S.shape==='round', dm=x=>round?{d:x.d}:{w:x.w,h:x.h};
+  const t=S.mode==='exhaust'?transLen(dm(prev),dm(s),round):transLen(dm(s),dm(prev),round);
+  return t?Object.assign(t,{from:prev.dim}):null;
 }
 // 분기 45° 입구 길이 — 분기 덕트 폭(메인을 따라가는 쪽 치수) ÷ 4, 최소 150 mm (SMACNA 계열 비율 · 원문 대조 필요, 최소값은 사내 관행 2026-10-26)
 function branchInlet(zid){ const l=calcZone(zid).last; if(!l) return null; const bw=S.shape==='round'?l.d:l.w; return {name:zoneById(zid).name,bw,dim:l.dim,L:Math.max(150,ceil50(bw/4))}; }
@@ -579,18 +636,19 @@ function segTableHTML(){
       const chk=segChecks(s).map(c=>`<span class="badge ${c[0]}">${c[1]}</span>`).join(' ')||'<span class="badge b-ok">OK</span>';
       const rd=reducerLen(i?res.segs[i-1]:null,s);
       const br=(s.subs||[]).map(branchInlet).filter(Boolean);
-      const rdTxt=rd?`<b>${f0(rd.L)}</b> <span class="card-s">${rd.ex?'확대':'축소'} · ${rd.from}→</span>`:'—';
+      const rdTxt=rd?`<b>${f0(rd.L)}</b> <span class="card-s">${rd.kind} · 계산 ${f0(rd.raw)} · ${rd.from}</span>`:'—';
       const brTxt=br.length?br.map(b=>`${esc(b.name)} 폭 ${f0(b.bw)} → <b>${f0(b.L)}</b>`).join('<br>'):'—';
       rows+=`<tr class="${s.type==='main'?'seg-main':''}"><td class="l"><b>${esc(z.name)}</b></td><td>${i+1}</td><td>${SEG_NAME[s.type]}</td><td>${f0(s.flow)}</td>
-        <td><b>${s.dim}</b></td><td>${f2(s.vAct)}</td>${round?'':`<td>${f2(s.ar)}</td>`}<td>${s.plate}</td><td>${s.ins}</td>
+        <td><b>${s.dim}</b></td><td>${f2(s.vAct)}</td><td class="cv">${f1(s.vmax)}</td><td${s.pam>pamWarn()+1e-9?' style="color:var(--warn);font-weight:700"':''}>${f2(s.pam)}</td>${round?'':`<td>${f2(s.ar)}</td>`}<td>${s.plate}</td><td>${s.ins}</td>
         <td>${mm(dW)}</td><td>${mm(s.outW)}</td><td><b>${mm(s.totW)}</b></td>
         <td>${mm(dH)}</td><td>${mm(s.outH)}</td><td><b>${mm(s.totH)}</b></td><td>${f0(s.ceil)}</td><td style="white-space:nowrap">${rdTxt}</td><td class="l" style="white-space:nowrap">${brTxt}</td><td style="white-space:nowrap">${chk}</td></tr>`; }); }
   if(!rows) return '';
   return `<div style="margin-top:16px"><b>구간별 덕트 치수 (도면용)</b><div class="tw" style="margin-top:6px"><table class="t"><thead>
-    <tr><th rowspan="2">ZONE</th><th rowspan="2">순서</th><th rowspan="2">구간</th><th rowspan="2">풍량<br>(CMH)</th><th rowspan="2">덕트<br>(안치수)</th><th rowspan="2">실제<br>(m/s)</th>${round?'':'<th rowspan="2">아스펙트비</th>'}<th rowspan="2">판두께</th><th rowspan="2">보온</th>
-      <th colspan="3">폭 (mm)</th><th colspan="3">높이 (mm)</th><th rowspan="2">천장 속</th><th rowspan="2">리듀서 길이<br>(앞 구간에서)</th><th rowspan="2">합류 분기 · 45° 입구 길이</th><th rowspan="2">검토</th></tr>
+    <tr><th rowspan="2">ZONE</th><th rowspan="2">순서</th><th rowspan="2">구간</th><th rowspan="2">풍량<br>(CMH)</th><th rowspan="2">덕트<br>(안치수)</th><th rowspan="2">실제<br>(m/s, 단면)</th><th rowspan="2">상한<br>(m/s)</th><th rowspan="2">마찰<br>(Pa/m)</th>${round?'':'<th rowspan="2">아스펙트비</th>'}<th rowspan="2">판두께</th><th rowspan="2">보온</th>
+      <th colspan="3">폭 (mm)</th><th colspan="3">높이 (mm)</th><th rowspan="2">천장 속</th><th rowspan="2">리듀서 길이<br>(앞 구간과)</th><th rowspan="2">합류 분기 · 45° 입구 길이 <span class="badge b-info">사내</span></th><th rowspan="2">검토</th></tr>
     <tr><th>덕트</th><th>+보온</th><th>+보온+바운더리</th><th>덕트</th><th>+보온</th><th>+보온+바운더리</th></tr></thead><tbody>${rows}</tbody></table></div>
-    <p class="note">덕트 = 안치수 + 판두께 × 2 · +보온 = 보온 두께 × 2 추가 · +바운더리 = 각 면 여유 추가 (폭 = 좌 + 우, 높이 = 위 + 아래). 천장 속 판정은 높이 +보온+바운더리 기준.<br>리듀서 길이 = 앞 구간(말단 쪽)과 크기가 다를 때. 줄어드는 양 a = 폭 차이 ÷ 2 (양쪽) 와 높이 차이 (밑면 맞춤) 중 큰 값, 원형은 지름 차이 ÷ 2. ${S.mode==='exhaust'?'배기 = 확대 한쪽 15° → a × 3.7':'급기 = 축소 한쪽 30° → a × 1.7'}, 최소 300 mm. 합류 분기 = 이 줄에서 들어오는 ZONE 의 마지막 덕트 폭과 45° 입구 길이 (폭 ÷ 4, 최소 150 mm).</p></div>`;
+    <p class="note">덕트 = 안치수 + 판두께 × 2 · +보온 = 보온 두께 × 2 추가 · +바운더리 = 각 면 여유 추가 (폭 = 좌 + 우, 높이 = 위 + 아래). 천장 속 판정은 높이 +보온+바운더리 기준.<br>마찰 = 직관 마찰손실 (상당지름 · ASHRAE 마찰계수 · 아연도강판). 경고 ${f1(pamWarn())} Pa/m 는 설계 목표이며, 충족해도 팬 성능 충족을 뜻하지 않음 — 부속·기구 손실을 더한 경로별 정압은 별도. 상한 = 사내 소음·저항 상한 (선정 후 실제 풍속으로 재검사).
+    <br>리듀서 길이 = 앞 구간과 크기가 다를 때, 공기 흐름 방향으로 면마다 판정 (${redAngles().name}). 폭 이동량 = ${S.redShape==='ecc'?'ΔW (편심형, 한쪽 면 일직선)':'ΔW ÷ 2 (대칭형)'}, 높이 = ΔH (한쪽 면 맞춤), 원형 = ΔD ÷ 2. 길이 = 이동량 ÷ tan(한쪽 각도), 면별 큰 값 → 50 mm 올림 · 최소 300 mm (사내 제작값, 접속 직선부 제외). 합류 분기 = 이 줄에서 들어오는 ZONE 의 마지막 덕트 폭과 45° 입구 길이 (폭 ÷ 4, 최소 150 mm — 사내값).</p></div>`;
 }
 // ── 덕트 계통도 (SVG) — 왼쪽 말단 → 오른쪽 팬. 기구는 줄 위로, 합류 ZONE 은 아래로 붙는다
 function diagramSVG(){
@@ -651,9 +709,17 @@ function renderSummary(){
     if(s.rev) warns.push(['wi-red',`${esc(z.name)} ${i+1}번 구간 ${s.dim} — 직접 입력한 치수가 하류(앞 줄·합류 ZONE)보다 작습니다 (치수 역전).`]);
     if(s.mountBad) warns.push(['wi-red',`${esc(z.name)} ${i+1}번 구간 ${s.dim} — 이 줄의 기구가 덕트에 여유 있게 들어가지 않습니다. 기구 크기를 직접 정했다면 자동으로 되돌리거나 덕트를 키우세요 (${{bottom:'폭 ≥ 기구 단변 + 여유 × 2',side:'높이 ≥ 기구 높이 + 여유 × 2'}[S.mount]||'지름 ≥ 기구 + 여유 × 2'}).`]);
     if(s.ar>4+1e-9) warns.push(['wi-warn',`${esc(z.name)} ${i+1}번 구간 ${s.dim} — 아스펙트비 ${f2(s.ar)} (4 초과). 풍속 상향·경로 변경·분할 검토.`]);
-    if(s.area>=SEIS){ const half=sizeSeg(s.flow/2,s.V0,{ceil:s.ceil,hPrev:s.h||0},{});
-      warns.push(['wi-warn',`${esc(z.name)} ${i+1}번 구간 ${s.dim} — 단면적 ${f2(s.area)} m² ≥ 0.6, 내진 대상 (AC-079).${s.seis?` 풍속을 상한 ${f1(s.seis.vmax)} m/s 까지 올려도 0.6 m² 아래로 못 줄임.`:''} 두 줄로 나누면 ${half.dim} × 2 (${f2(half.area)} m²) — 팬 앞 합류부만 버팀대.`]); }
-    else if(s.seis&&s.seis.ok) warns.push(['wi-ok',`${esc(z.name)} ${i+1}번 구간 ${s.dim} — 풍속을 ${f1(s.V0)} → ${f1(s.V)} m/s (상한 ${f1(s.seis.vmax)}) 로 올려 내진 대상에서 뺐습니다.`]); }); }
+    if(s.vAct>s.vmax+1e-6) warns.push(['wi-red',`${esc(z.name)} ${i+1}번 구간 ${s.dim} — 실제 풍속 ${f2(s.vAct)} m/s 가 구간 상한 ${f1(s.vmax)} m/s 를 넘습니다. 규격을 키우세요.`]);
+    if(s.pam>pamWarn()+1e-9) warns.push(['wi-warn',`${esc(z.name)} ${i+1}번 구간 ${s.dim} — 마찰 ${f2(s.pam)} Pa/m, 설정한 목표 ${f1(pamWarn())} 초과.`]);
+    if(s.area>=SEIS){ const half=sizeSeg(s.flow/2,s.V,{ceil:s.ceil,ins:s.ins,hPrev:s.h||0},{});
+      const pw=pamWarn(), a=s.alt;
+      const cmp=`원래안 <b>${s.dim}</b> · ${f2(s.vAct)} m/s · ${f2(s.pam)} Pa/m`;
+      const altTxt=!a?'':a.none&&a.blocked?' 앞 구간(말단 쪽)이 0.6 m² 이상이라 이 구간만 줄일 수 없음 — 앞 구간 축소안을 먼저 적용하면 다시 계산합니다.':a.none?` 상한 ${f1(s.vmax)} m/s 이내에서 0.6 m² 미만 규격 없음 → 두 줄 분할 (${half.dim} × 2, ${f2(half.area)} m²) 또는 내진 지지 설계.`
+        :` / 축소안 <b>${a.dim}</b> · ${f2(a.vAct)} m/s (상한 ${f1(s.vmax)}) · ${f2(a.pam)} Pa/m${a.pam>pw+1e-9?' <b>— Pa/m 목표 초과</b>':''} · ${f3(a.area)} m² <button class="btn no-print" style="height:24px" onclick="seisAdopt('${z.id}','${s.row.id}',${a.V})">축소안 적용</button>`;
+      warns.push(['wi-warn',`${esc(z.name)} ${i+1}번 구간 — 단면적 ${f2(s.area)} m² ≥ 0.6: 소단면 예외조건 불충족, 중량·고정 등 다른 조건 포함 <b>내진 검토 필요</b> (KDS 41 17 00 18.4.5). ${cmp}${altTxt}`]); }
+    else if(s.row.seisAdopt) warns.push(['wi-ok',`${esc(z.name)} ${i+1}번 구간 ${s.dim} — 내진 축소안 채택 (${f2(s.vAct)} m/s · ${f2(s.pam)} Pa/m). 단면적 조건만 충족 — 중량·고정 조건 확인 전 면제 미확정. 늘어난 손실은 팬 정압에 반영.`]); }); }
+  { let n=0; for(const z of S.zones) for(const s of calcZone(z.id).segs) if(!s.empty&&s.type!=='term'&&s.area<SEIS&&!s.row.seisAdopt) n++;
+    if(n) warns.push(['wi-ok',`메인·분기 ${n}개 구간 단면적 0.6 m² 미만 — 단면적 조건만 충족. 단위길이당 중량·구조체 고정 조건 확인 전에는 내진 면제 미확정.`]); }
   const root=roots.length?calcZone(roots[0]):null;
   const Q=root?root.flow:totalRoom;
   if(root&&Math.abs(root.flow-totalRoom)>0.5&&!unused.length) warns.push(['wi-warn',`팬 연결 ZONE 풍량 ${f0(root.flow)} 이 실 풍량 합계 ${f0(totalRoom)} 과 다릅니다.`]);
@@ -668,9 +734,9 @@ function renderSummary(){
   const longSide=m?(S.shape==='round'?m.d:Math.max(m.w,m.h)):0;
   // 루버 ↔ 덕트 리듀서 길이 (한쪽 기준): 급기는 루버→덕트 축소 30°, 배기는 덕트→루버 확대 15°
   let red='';
-  if(m){ const dw=S.shape==='round'?m.d:m.w, dh=S.shape==='round'?m.d:m.h; const a=Math.max((L.w-dw)/2,(L.h-dh)/2,0);
-    const len=ex?a/Math.tan(15*Math.PI/180):a/Math.tan(30*Math.PI/180);
-    red=`<div class="row"><span>루버 ↔ 덕트 ${ex?'확대 (한쪽 15°)':'축소 (한쪽 30°)'}</span><span>${f0(len)} mm 이상${len>1000?' · 챔버 권장':''}</span></div>`; }
+  if(m){ const D={w:S.shape==='round'?m.d:m.w,h:S.shape==='round'?m.d:m.h}, Lv={w:L.w,h:L.h};
+    const t=ex?transLen(D,Lv,false):transLen(Lv,D,false);
+    if(t) red=`<div class="row"><span>루버 ↔ 덕트 ${t.kind} (${redAngles().name})</span><span>${f0(t.L)} mm 이상${t.L>1000?' · 챔버 권장':''}</span></div>`; }
   const sq=`<div class="sum">
     <div class="sbox"><h4>팬 (${{inline:'인라인덕트팬',hrv:'전열교환기',ceiling:'천정형팬',ahu:'공조기'}[S.device]})</h4>
       <div class="big">${f0(Q)} CMH</div>
@@ -684,7 +750,8 @@ function renderSummary(){
       <div class="row"><span>풍량 (CMH)</span><span><b>${f0(Q)}</b></span></div>
       <div class="row"><span>SIZE</span><span><b>${f0(L.w)} × ${f0(L.h)}</b></span></div>
       <div class="row"><span>OPENING SIZE</span><span><b>${f0(L.w+50)} × ${f0(L.h+50)}</b></span></div>
-      <div class="row"><span>VELOCITY</span><span><b>${f2(L.vFace)} m/s</b></span></div>
+      <div class="row"><span>VELOCITY (전면)</span><span><b>${f2(L.vFace)} m/s</b></span></div>
+      <div class="row"><span>자유개구면 풍속 (개구율 ${f2(S.louverOpen)})</span><span>${f2(L.vFree)} m/s</span></div>
       <div class="row" style="border-top:1px dashed var(--border);margin-top:4px;padding-top:6px"><span>풍량 (L/s)</span><span>${f0(L.Ls)}</span></div>
       <div class="row"><span>적용 식</span><span>${L.rule}</span></div>
       <div class="row"><span>필요 전면면적</span><span>${f3(L.A)} m²${L.adj?' (개구율 보정)':''}${L.byTgt?' (목표 풍속)':''}</span></div>
@@ -694,7 +761,8 @@ function renderSummary(){
       ${red}
       <div class="row no-print"><span>크기 직접 입력</span><span><input class="ti s${S.louverO.w?' ov':''}" type="text" inputmode="decimal" step="50" value="${f0(L.w)}" onchange="louverSet('w',this.value)"> × <input class="ti s${S.louverO.h?' ov':''}" type="text" inputmode="decimal" step="50" value="${f0(L.h)}" onchange="louverSet('h',this.value)"></span></div>
       <span class="badge ${L.ok?'b-ok':'b-red'}">${L.ok?'면적 OK':'면적 부족'}</span>
-      ${ex?'<p class="note">배기 루버 식은 KDS 원문에 구간·기호 오탈자가 있어 재검증 필요. 팬 뒤 양압 배기덕트는 거실 천장 속에 두지 않음 (KDS 1.6(6)).</p>':''}</div>
+      ${L.gap?'<p class="note">2,400~3,300 L/s 는 KDS 원문에 정해지지 않은 구간 — 면적식과 전면풍속 2.5 m/s 중 큰 면적을 쓰는 설계 보완값입니다.</p>':''}
+      <p class="note">최종: 제품의 자유면적·압력손실·빗물 유입 방지 성능 확인.${ex?' 팬 뒤 양압 배기덕트는 거실 천장 속에 두지 않음 (KDS 1.6(6)).':''}</p></div>
     <div class="sbox"><h4>보온 · 높이</h4>
       <div class="row"><span>보온 두께</span><span>${insT()} mm (${S.insOff?'없음':INS[S.insGrade][1].split(' ')[0]+'등급'+(S.epi?' +20%':'')})</span></div>
       <div class="row"><span>덕트 설치 가능 높이</span><span>${f0(S.ceil)} mm</span></div>
@@ -702,7 +770,15 @@ function renderSummary(){
       <p class="note">높이 상한 = 설치 가능 높이 − 위 45 − 아래 55 − 보온 × 2 − 판두께 × 2. 최종 판정은 구간별 필요 공간으로.</p></div>
   </div>`;
     const wl=warns.length?warns.map(w=>`<div class="warn-item ${w[0]}">${w[1]}</div>`).join(''):'<div class="warn-item wi-ok">검토사항 없음</div>';
-  $('sumBox').innerHTML=sq+`<div style="margin-top:14px"><b>검토사항</b><div class="warn-list" style="margin-top:6px">${wl}</div></div>`;
+  $('sumBox').innerHTML=sq+stagesHTML()+`<div style="margin-top:14px"><b>검토사항</b><div class="warn-list" style="margin-top:6px">${wl}</div></div>`;
+}
+// 검토 단계 — 이 앱은 1단계(단면 선정) 도구. 나머지가 끝나기 전에는 「설계 완료」로 보지 않는다
+function stagesHTML(){
+  const st=[['1. 단면 선정','풍량 · 목표풍속 · 규격 · 실제 풍속 · Pa/m 재계산','b-ok','완료 (앱)'],
+    ['2. 계통 성능','경로별 직관·부속·기구 손실 합산 → 팬 성능곡선 · 분기 밸런싱 · 소음','b-warn','미검토 — Pa/m 만 확인'],
+    ['3. 시공·내진','판두께 · 보강 · 지지 · 관통 · 보온 · 내진 (KDS 41 17 00)','b-warn','미검토'],
+    ['4. 설계 검토','적용 기준 판본 · 제품자료(기구·루버·벤트캡)를 책임 설계자가 확인','b-warn','미검토']];
+  return `<div style="margin-top:14px"><b>검토 단계</b><div class="tw" style="margin-top:6px"><table class="t"><tbody>${st.map(s=>`<tr><td class="l"><b>${s[0]}</b></td><td class="l">${s[1]}</td><td><span class="badge ${s[2]}">${s[3]}</span></td></tr>`).join('')}</tbody></table></div></div>`;
 }
 function louverBox(L,Q,ex,other){
   return `<div class="sbox"><h4>${ex?'배기 루버':'외기 루버'} — KDS 31 25 30 4.4(${ex?2:1})${other?' · 반대 탭 계통':''}</h4>
@@ -722,52 +798,57 @@ function renderCeilSummary(Q,totalRoom,m,warns){
       <div class="row"><span>실 풍량 합계</span><span>${f0(totalRoom)} CMH</span></div>
       ${m?`<div class="row"><span>벤트캡 연결 덕트</span><span><b>${m.dim}</b> · ${f2(m.vAct)} m/s</span></div>`:''}
       <p class="note">합류 덕트의 저항은 각 팬이 나눠 부담합니다. 가장 먼 팬의 정압 여유를 확인하세요 (정압 계산은 다음 단계).</p></div>
-    <div class="sbox"><h4>VENT CAP (벤트캡)</h4>
+    <div class="sbox"><h4>VENT CAP (벤트캡) <span class="badge b-warn">예비 선정</span></h4>
       <div class="row"><span>AIR VOL.</span><span><b>${f0(Q)} CMH</b></span></div>
       <div class="row"><span>SIZE</span><span><b>${V.D}A</b></span></div>
       <div class="row"><span>OPENING SIZE</span><span><b>${V.open}A</b></span></div>
       <div class="row"><span>VELOCITY</span><span><b>${f2(V.v)} m/s</b></span></div>
       <div class="row" style="border-top:1px dashed var(--border);margin-top:4px;padding-top:6px"><span>유효풍속 / 기준</span><span>${f2(V.vEff)} / ${f1(V.V)} m/s <span class="badge ${V.ok?'b-ok':'b-red'}">${V.ok?'OK':'초과'}</span></span></div>
       <div class="row"><span>필요 지름</span><span>φ${f0(V.need)} → ${V.D}A</span></div>
-      ${V.red?`<div class="row"><span>덕트 φ${m.d} → ${V.D}A 확대 (한쪽 15°)</span><span>${f0(V.red)} mm 이상</span></div>`:''}
+      ${V.red?`<div class="row"><span>덕트 φ${m.d} → ${V.D}A 확대 (${redAngles().name})</span><span>${f0(V.red)} mm 이상</span></div>`:''}
       <div class="row no-print"><span>기준 유효풍속 · 개구율</span><span><input class="ti s${S.ventV!==4?' ov':''}" type="text" inputmode="decimal" value="${f1(V.V)}" onchange="setSys('ventV',this.value)"> <input class="ti s${S.ventOpen!==0.7?' ov':''}" type="text" inputmode="decimal" value="${f2(V.a)}" onchange="setSys('ventOpen',this.value)"></span></div>
       <div class="row no-print"><span>크기 직접 입력 (A)</span><span><input class="ti s${S.ventO?' ov':''}" type="text" inputmode="decimal" value="${V.D}" onchange="ventSet(this.value)"></span></div>
-      <p class="note">기준: 학회 「건축기계설비 설계기준」 표 4.6 배기루버 유효 개구면 풍속 4.0 m/s · 합류 후 전체 풍량으로 산정. 개구율 = 방충망 부착 기준 0.7 (방충망 개구율 통상 60~70%, 카탈로그 값이 있으면 그 값). 참고: KDS 31 25 30 4.4(2) 벽 배기루버 식으로는 ${f3(V.kds)} m² — 원형 벤트캡에는 적용하지 않음 (판단).</p></div>
+      <p class="note"><b>예비 선정 (기준상 확정식 아님).</b> 학회 표 4.6 배기루버 유효 개구면 풍속 4.0 m/s 를 빌려 쓰고 방충망 개구율 0.7 을 가정, 합류 후 전체 풍량으로 산정. 최종 선정: ① 연결 덕트 지름에 맞는 제품 후보 ② 실제 풍량에서 제품 압력손실 확인 ③ 덕트·부속 손실과 합산해 가장 먼 팬이 그 풍량을 내는지 확인. 여러 팬 합류 시 정지 팬 쪽 역류 방지(역풍방지 댐퍼)·공통 덕트 압력 검토. 참고: KDS 4.4(2) 벽 배기루버 식으로는 ${f3(V.kds)} m².</p></div>
     <div class="sbox"><h4>보온 · 높이</h4>
       <div class="row"><span>보온 두께</span><span>${insT()} mm${S.insOff?' (없음)':''}</span></div>
       <div class="row"><span>덕트 설치 가능 높이</span><span>${f0(S.ceil)} mm</span></div>
       <p class="note">화장실 배기덕트는 실내 공기라 보온을 생략하기도 하나, 외벽 가까운 구간은 겨울철 결로를 검토.</p></div></div>
-    <div style="margin-top:14px"><b>검토사항</b><div class="warn-list" style="margin-top:6px">${wl}</div></div>`;
+    ${stagesHTML()}<div style="margin-top:14px"><b>검토사항</b><div class="warn-list" style="margin-top:6px">${wl}</div></div>`;
 }
 function setLouverV(v){ const x=num(v); S.louverV=(x==null||x<=0)?null:x; S.louverO={w:null,h:null}; render(); }
 function ventSet(v){ const x=num(v); S.ventO=(x==null||x<=0)?null:x; render(); }
 function renderRef(){
   if($('refBox').dataset.done) return; $('refBox').dataset.done=1;
   $('refBox').innerHTML=`
-  <h4>풍속 기준 (m/s) — 덕트는 단면 기준, 기구는 유효풍속</h4>
-  <div class="tw"><table class="t"><thead><tr><th>용도</th><th>메인</th><th>분기</th><th>말단</th><th>취출구</th><th>흡입구</th></tr></thead><tbody>
-  ${USAGE.map(u=>`<tr><td class="l">${u[1]}</td><td>${u[2]}</td><td>${u[3]}</td><td>${u[4]}</td><td>${u[5]}</td><td>${u[6]}</td></tr>`).join('')}</tbody></table></div>
-  <ul style="margin-top:6px"><li>취출구·흡입구: ASHRAE HVAC Applications 소음 장 「유효개구면 최대 권장풍속」(RC 25~45) 계열. 학회 「건축기계설비 설계기준」 표 3.53 허용 취출풍속 상한(주거 4 · 사무 일반 6 등) 이내.</li>
-  <li>환기 전용 계통의 실내 흡입구는 학회 표 4.6 의 2.0 m/s 를 우선 (화장실 천장은 3.0).</li>
-  <li>화장실·샤워실 덕트 값은 설계 기본값. 천정형팬은 팬 접속구 지름에서 시작해 합류한다.</li>
-  <li>벤트캡: 학회 표 4.6 배기루버 유효 개구면 풍속 4.0 m/s 이하, 방충망 개구율 0.7, 합류 후 전체 풍량 기준, 연결 덕트보다 작지 않게.</li>
-  <li>덕트: 설계 기본값. KDS 31 25 30 4.1(12) 주덕트 15 m/s 이하 = 저속덕트.</li>
-  <li>최종 규격은 제조사 성능자료(NC · 도달거리 · 압력손실)로 확인.</li></ul>
-  <h4>판두께 (mm) — 교재값, KCS 31 20 20 원문 대조 필요</h4>
-  <p>각형 장변: 450 이하 0.5 · 460~750 0.6 · 760~1,500 0.8 · 1,510~2,200 1.0 · 2,210 이상 1.2<br>원형(스파이럴) 지름: 200 이하 0.5 · 210~600 0.6 · 610~800 0.8 · 810~1,000 1.0</p>
-  <h4>보온 두께 — KCS 31 20 05 (덕트 내부 10~40℃, RH 75% 미만)</h4>
-  <p>열전도율 등급 가 20 · 나 25 · 다 30 · 라 35 mm. 에너지절약설계기준 EPI 7번 적용 시 ×1.2 후 5 mm 올림. 외기·배기·다습 구간은 결로 검토 별도. 주방배기는 불연재(화기 50 / 일반 25 이상), 제연덕트 25.</p>
-  <h4>각 면 여유 (보온 바깥에서, mm) — 어림값</h4>
-  <p>각형 장변 750 이하: 위 45 · 아래 55 · 좌우 75 / 760~1,500: 55 · 75 · 95 / 1,500 초과: 65 · 95 · 115<br>원형 600 이하: 위 40 · 아래 20 · 좌우 30 / 600 초과: 50 · 40 · 50<br>위 = 플랜지·볼트·작업 틈 · 아래 = 플랜지·지지앵글 · 좌우 = 플랜지·행거 볼트</p>
-  <h4>덕트 ↔ 기구 맞춤</h4><p>직부(하부·측면)이면 기구가 붙는 줄의 덕트 안치수 ≥ 기구 + 여유 × 2 (한쪽 표준 75 · 최소 50 mm, 시공 관행). 직부일 때 기구는 짧은 변이 가장 작은 크기로 고른다 (아스펙트비 3 이하). 덕트가 자동이면 덕트를 키우고, 덕트 크기를 직접 정했거나 팬 쪽 고정 크기에 묶였으면 그 실의 기구를 낮고 넓게 다시 고른다. 크기 변경은 팬 쪽으로만 전파된다 — 말단·분기를 키우면 그보다 팬 쪽 구간이 따라 커지고, 팬 쪽을 줄여도 말단 쪽은 바뀌지 않으며 하류보다 작으면 「치수 역전」. 폭만 직접 정하면 높이를, 높이만 정하면 폭을 필요 면적에 맞춰 다시 구한다.</p>
-  <h4>내진 회피</h4><p>단면적 0.6 m² 이상(AC-079 Rule 3)인 메인·분기는 풍속을 0.5 m/s 씩 올려 경계 아래로 들어오는 첫 값을 쓴다. 상한 [메인 / 분기]: ${Object.entries(VMAX).map(([k,v])=>U(k)[1]+' '+v[0]+' / '+v[1]).join(' · ')} m/s. 주거·사무·공장은 해외 저속덕트 최대값 계열, 나머지는 판단값. 상한까지 올려도 안 되면 두 줄 분할 크기를 안내.</p>
-  <h4>아스펙트비</h4><p>학회 설계기준 6장 (8) 「원칙적으로 4:1 이하」. 3 이하 양호 · 3~4 주의 · 4 초과 분할 검토. 4 에서 마찰 약 1.25 배.</p>
-  <h4>루버 — KDS 31 25 30 4.4</h4><p>외기: 3,300 L/s 이상 전면풍속 2.0 m/s 이하, 미만 A = 0.4 + 0.00036Q · 배기: 2.5 m/s / A = 0.4 + 0.00025Q (원문 오탈자 재검증 필요) · 개구율 45% 이하 별도 산정.</p>
-  <h4>팬 · 부속 — KDS 31 25 30</h4><p>흡입측 직관 날개지름 × 4 (또는 × 1 + 터닝베인 엘보) · 토출측 직관 출구 장변 × 1.5 · 엘보 곡률반경 1.5 이상 · 분지덕트 VD · 플렉시블 2.0 m 이하. 축소 한쪽 30° · 확대 한쪽 15° (KCS 31 20 20 3.1.2, 원문 대조 필요).</p>`;
+  <p><span class="badge b-red">법정</span> 기준에 수치·의무가 명시 · <span class="badge b-ok">권장</span> 학회·ASHRAE 초기값 · <span class="badge b-info">사내</span> 회사 시공·제작 관행 · <span class="badge b-warn">예비</span> 제품 자료로 교체할 가정값. 이 앱은 단면 선정 도구이며, 결과만으로 「적법 설계 완료」가 아닙니다.</p>
+  <h4>기구 풍속 <span class="badge b-ok">권장</span> — 자유개구면 기준, ASHRAE 2019 HVAC Applications Ch.49 Table 9</h4>
+  <div class="tw"><table class="t"><thead><tr><th>설계 소음 목표</th><th>취출구</th><th>흡입구</th><th>초기값 용도</th></tr></thead><tbody>
+  ${Object.entries(RC).map(([k,v])=>`<tr><td>RC ${k}</td><td>${v[0]}</td><td>${v[1]}</td><td class="l">${USAGE.filter(u=>RC_DEF[u[0]]===+k).map(u=>u[1]).join(', ')}</td></tr>`).join('')}</tbody></table></div>
+  <ul style="margin-top:6px"><li>제품 소음자료가 없을 때 쓰는 예비 선정값. 기구 수가 많거나 수음점이 가까우면 더 낮춤. 용도는 초기 RC 를 불러올 뿐 — 상주 여부·인접 실 소음 전달로 정함.</li>
+  <li>필요 겉면적 = 풍량 ÷ (자유개구면 풍속 × 개구율). 개구율이 어떤 면적(외곽·목·코어)에 대한 비율인지 제품 자료와 맞출 것.</li>
+  <li>공동주택 환기 (학회 「건축기계설비 설계기준」 표 4.6): 흡입구 실내 2.0 · 복도 3.0 · 화장실 천장 3.0 m/s. 옵션을 켰을 때만, 기계실·공장 제외.</li></ul>
+  <h4>덕트 풍속 (m/s) <span class="badge b-ok">권장</span> · 상한 <span class="badge b-info">사내</span> — 단면 기준</h4>
+  <div class="tw"><table class="t"><thead><tr><th>용도</th><th>메인</th><th>분기</th><th>말단</th><th>상한 메인 / 분기</th></tr></thead><tbody>
+  ${USAGE.map(u=>`<tr><td class="l">${u[1]}</td><td>${u[2]}</td><td>${u[3]}</td><td>${u[4]}</td><td>${(VMAX[u[0]]||[]).join(' / ')}</td></tr>`).join('')}</tbody></table></div>
+  <ul style="margin-top:6px"><li>구간별 목표풍속에 의한 단면 선정 (기계설비 기술기준 별표 9 2.1(6) — 등속법·등마찰법·정압재취득법 모두 인정, 각 기구에 설계풍량이 나오게). 국가기준이 정한 고정 풍속이 아님.</li>
+  <li><span class="badge b-red">법정</span> 저속덕트 메인 15 m/s 이하 · 정압 500 Pa 미만 (KDS 31 25 30 4.1(12)).</li>
+  <li>선정 후 실제 풍속을 상한과 다시 비교. 구간 구분(메인·분기·말단)은 자동 분류이며 실제 연결 구조·담당 풍량으로 바꿀 수 있음.</li></ul>
+  <h4>마찰손실 <span class="badge b-ok">권장</span></h4><p>ASHRAE 등마찰법 0.4~1.6 Pa/m. 경고 기본 1.5 (HRV·천장팬 1.0 = 사내 검토값). 직관 목표 충족 ≠ 팬 성능 충족. 경로 손실 = Σ(R·L) + Σ(K·ρV²/2) + Σ제품 손실 + 시스템 영향 (KDS 4.2), 가장 불리한 경로로 팬 선정.</p>
+  <h4>루버 <span class="badge b-red">법정</span> — KDS 31 25 30 4.4 · 기계설비 기술기준 별표 9 2.1(10)</h4><p>외기: 3,300 L/s 이상 전면풍속 2.0 m/s 이하, 미만 A = 0.4 + 0.00036Q · 배기: 3,300 L/s 이상 2.5 m/s 이하, 2,400 L/s 미만 A = 0.4 + 0.00025Q · 개구율 45% 이하는 별도 산정.<br><span class="badge b-warn">보완</span> 배기 2,400~3,300 L/s 는 원문 미명시 → A = max(0.4 + 0.00025Q, Q/2.5).</p>
+  <h4>벤트캡 <span class="badge b-warn">예비</span></h4><p>학회 표 4.6 배기루버 4.0 m/s · 방충망 개구율 0.7 가정, 합류 후 전체 풍량. 기준상 확정식이 아님 — 제품의 풍량–압력손실 자료로 최종 선정.</p>
+  <h4>리듀서 (변형부)</h4><p><span class="badge b-red">법정</span> 확대 15° 이하 · 축소 30° 이내 (KCS 31 20 20 3.1.2, 각도 정의 미명시). 앱 기본 = 각 측면(한쪽) 기준 — USFK O&MA 시방 2.11.1.1 「each side 15°, included 30°」. 선택: ASHRAE Fundamentals Ch.21 전체각 15° 이하 권장 · 프로젝트 지정.<br>공기 흐름 방향으로 면마다 판정 · 폭 대칭형 ΔW/2, 편심형 ΔW · 높이 ΔH · 원형 ΔD/2 · 길이 = 이동량 ÷ tan(한쪽 각) · 최소 300 mm <span class="badge b-info">사내</span>.</p>
+  <h4>내진 <span class="badge b-red">법정(조건부)</span> — KDS 41 17 00 18.4.5</h4><p>소단면 예외는 단면적 0.6 m² 미만 외에 단위길이당 중량·구조체 고정 조건, 용도(독성·가연성 가스·배연) 제한, 중요도계수·유연한 연결 조건이 함께 있음. 앱은 면적만 보므로 0.6 이상 = 「검토 필요」, 미만 = 「면제 미확정」. 풍속 자동 상향 없음 — 상한·Pa/m 이내의 축소안을 제시하고 설계자가 채택. 행거 길이만으로 면제하는 조건은 넣지 않음.</p>
+  <h4>그릴 직부 · 분기 입구 <span class="badge b-info">사내</span></h4><p>덕트 안치수 ≥ 기구 + 한쪽 75 (양쪽 150) mm. 실제 타공·목·프레임·이음부·보강재·댐퍼 삽입 간섭 확인. 분기 45° 입구 길이 = 폭 ÷ 4, 최소 150 mm.</p>
+  <h4>댐퍼 · 팬 · 부속 <span class="badge b-red">법정</span> — KDS 31 25 30</h4><p>분지덕트 잠금형 VD (4.1(3), 4.3.1) · 높이 300 이상 댐퍼 다익 · 댐퍼 면풍속 1.5~7.5 m/s · 엘보 곡률반경 1.5 이상 · 주 덕트 가까이 말단기구 금지 (4.1(11)) · 흡입측 직관 날개지름 × 4 · 토출측 장변 × 1.5 · 플렉시블 2.0 m 이하.</p>
+  <h4>아스펙트비 <span class="badge b-red">법정</span></h4><p>4 : 1 이내 원칙 (기계설비 기술기준 별표 9). 3 이하 양호 · 3~4 주의 · 4 초과 분할 검토.</p>
+  <h4>보온 <span class="badge b-warn">예비</span></h4><p>KCS 31 20 05 열전도율 등급 가 20 · 나 25 · 다 30 · 라 35 mm (내부 10~40℃, RH 75% 미만). EPI 7번 적용 시 ×1.2 후 5 mm 올림 — 현행 EPI 항목 적용 조건 확인 전까지 법정 의무로 보지 않음. 덕트 용도·통과 공간·온습도·결로로 구간별 판단 (ZONE 별 「보온 없음」).</p>
+  <h4>판두께 · 각 면 여유 <span class="badge b-warn">예비</span></h4><p>각형 장변: 450 이하 0.5 · 460~750 0.6 · 760~1,500 0.8 · 1,510~2,200 1.0 · 2,210 이상 1.2 / 원형: 200 이하 0.5 · 210~600 0.6 · 610~800 0.8 · 810~1,000 1.0 (교재값, KCS 31 20 20 표·압력등급 대조 필요).<br>여유(보온 바깥): 각형 장변 750 이하 위 45 · 아래 55 · 좌우 75 / 760~1,500: 55 · 75 · 95 / 초과 65 · 95 · 115 · 원형 600 이하 40 · 20 · 30 / 초과 50 · 40 · 50 (어림값).</p>`;
 }
 
 // ── 이벤트 ───────────────────────────────────────────────────
+function setRedAng(i,v){ const x=num(v); if(x>0&&x<90) S.redAng[i]=x; render(); }
 function setSys(k,v){
+  if(k==='pamW'){ const x=num(v); S.pamW=x>0?x:null; return render(); }
   if(['ceil','regOpen','grilleOpen','louverOpen','fitGap','ventV','ventOpen'].includes(k)){ const x=num(v); if(x==null||x<0||(x===0&&k!=='fitGap')) return render(); S[k]=x; }
   else S[k]=v;
   if(k==='device'){
@@ -788,7 +869,8 @@ function roomAdd(){ const n=S.rooms.length; S.rooms.push({id:uid('r'),name:Strin
 function roomDel(id){ const r=S.rooms.find(r=>r.id===id); if(!r)return; ask(`「${r.name}」 실을 삭제할까요? ZONE 에서도 빠집니다.`,()=>{ S.rooms=S.rooms.filter(r=>r.id!==id); render(); }); }
 function roomSet(id,k,v){
   const r=S.rooms.find(r=>r.id===id); if(!r) return;
-  if(k==='name'||k==='usage'){ r[k]=v; if(k==='usage')r.vO=null; }
+  if(k==='name'||k==='usage'){ r[k]=v; if(k==='usage'){ r.vO=null; r.rc=null; } }
+  else if(k==='rc'){ r.rc=+v===RC_DEF[r.usage]?null:+v; r.vO=null; }
   else if(k==='count'){ r.count=Math.max(1,parseInt(v)||1); }
   else if(k==='flow'){ r.flow=Math.max(0,num(v,0)); }
   else { const x=num(v); r[k]=(x==null||x<=0)?null:x;
@@ -800,7 +882,7 @@ const Z=id=>zoneById(id), R=(z,rid)=>z&&z.rows.find(r=>r.id===rid);
 function newRow(items=[]){ return {id:uid('w'),items,vO:null,wO:null,hO:null,dO:null}; }
 function zoneAdd(){ S.zones.unshift({id:uid('z'),name:'ZONE-'+(S.zones.length+1),rows:[newRow()]}); render(); }
 function zoneDel(id){ const z=Z(id); if(!z)return; ask(`「${z.name}」 ZONE 을 삭제할까요? 이 ZONE 에 합류하던 갈래 ZONE 은 「미연결」로 남습니다.`,()=>{ S.zones=S.zones.filter(x=>x.id!==id); render(); }); }
-function zoneSet(id,k,v){ const z=Z(id); if(!z)return; if(k==='ceil'){ const x=num(v); z.ceil=(x==null||x<=0||x===S.ceil)?null:x; } else z[k]=v; render(); }
+function zoneSet(id,k,v){ const z=Z(id); if(!z)return; if(k==='insOff'){ z.insOff=!!v; return render(); } if(k==='ceil'){ const x=num(v); z.ceil=(x==null||x<=0||x===S.ceil)?null:x; } else z[k]=v; render(); }
 // 이 줄에서 갈라지는 새 ZONE — 이름은 「상위이름-번호」, 만들자마자 이 줄에 합류시킨다
 function rowBranch(zid,rid){
   const z=Z(zid), r=R(z,rid); if(!r) return;
@@ -814,7 +896,10 @@ function sortZones(){ S.zones=zoneOrder(); render(); toast('팬에서 먼 ZONE �
 function rowAdd(zid){ const z=Z(zid); if(z){ z.rows.push(newRow()); render(); } }
 function rowDel(zid,rid){ const z=Z(zid); if(z){ z.rows=z.rows.filter(r=>r.id!==rid); render(); } }
 function rowMove(zid,rid,d){ const z=Z(zid); if(!z)return; const i=z.rows.findIndex(r=>r.id===rid), j=i+d; if(i<0||j<0||j>=z.rows.length)return; [z.rows[i],z.rows[j]]=[z.rows[j],z.rows[i]]; render(); }
-function rowSet(zid,rid,k,v){ const r=R(Z(zid),rid); if(!r)return; const x=num(v); r[k]=(x==null||x<=0)?null:x;
+function rowType(zid,rid,v){ const z=Z(zid), r=R(z,rid); if(!r)return; const s=calcZone(zid).segs[z.rows.indexOf(r)]; r.tO=s&&v===s.typeAuto?null:v; r.vO=null; render(); }
+// 내진 축소안 채택 — 그 줄의 풍속을 축소안 값으로 고정 (설계자 선택)
+function seisAdopt(zid,rid,v){ const r=R(Z(zid),rid); if(!r)return; r.vO=v; r.wO=r.hO=r.dO=null; r.seisAdopt=true; render(); toast('축소안을 적용했습니다. 내진 면제는 중량·고정 등 다른 조건 확인 후 확정하세요.'); }
+function rowSet(zid,rid,k,v){ const r=R(Z(zid),rid); if(!r)return; const x=num(v); r[k]=(x==null||x<=0)?null:x; r.seisAdopt=false;
   if(k==='wO')r.hO=null; if(k==='hO')r.wO=null;   // 마지막에 바꾼 쪽만 고정, 다른 쪽은 자동
   render(); }
 function itemAdd(zid,rid,val){ const r=R(Z(zid),rid); if(!r||!val)return; const [t,id]=val.split('|'); r.items.push(t==='o'?{t:'o',k:id}:{t:'z',id}); render(); }
@@ -872,6 +957,9 @@ function adopt(d){
   if(!d||d.v!==2||!Array.isArray(d.rooms)) throw new Error('형식');
   S=Object.assign(blank(),d); S.louverO=Object.assign({w:null,h:null},d.louverO||{});
   if(!d.fitV2){ S.fitGap=75; S.fitV2=true; }   // 기구 여유 기본값 25 → 75 (2026-10-26)
+  // 실내 2.0 m/s 일괄 적용(ventOnly) 폐지 → 공동주택 환기 옵션(apt46, 기본 끔) · 내진 자동 상향(seisAvoid) 폐지 (2026-10-26)
+  if(!d.rcV){ S.apt46=false; S.rcV=true; } delete S.ventOnly; delete S.seisAvoid;
+  if(!Array.isArray(S.redAng)) S.redAng=[30,15];
   if(S.device==='ceiling'){ S.shape='round'; S.mode='exhaust'; }
 }
 function loadJSON(e){
