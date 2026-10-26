@@ -541,6 +541,18 @@ function renderZones(){
   h+=segTableHTML();
   $('zoneBox').innerHTML=h;
 }
+// 리듀서 길이 — 앞 구간(말단 쪽)과 크기가 다르면. 폭은 동심(양쪽), 높이는 편심(밑면 맞춤), 원형은 동심.
+//   급기는 바람이 좁아지므로 축소 한쪽 30° (a × 1.7), 배기는 넓어지므로 확대 한쪽 15° (a × 3.7).
+//   최소 300 mm, 50 mm 올림. 각도 기준: KDS 31 25 30 4.1(4) → KCS 31 20 20 3.1.2 (원문 대조 필요)
+function reducerLen(prev,s){
+  if(!prev||prev.empty) return null;
+  const a=S.shape==='round'?Math.abs(s.d-prev.d)/2:Math.max(Math.abs(s.w-prev.w)/2,Math.abs(s.h-prev.h));
+  if(a<1) return null;
+  const ex=S.mode==='exhaust', k=ex?1/Math.tan(15*Math.PI/180):1/Math.tan(30*Math.PI/180);
+  return {L:Math.max(300,ceil50(a*k)),ex,a,from:prev.dim};
+}
+// 분기 45° 입구 길이 — 분기 덕트 폭(메인을 따라가는 쪽 치수) ÷ 4, 최소 200 mm (SMACNA 계열 비율 · 원문 대조 필요, 최소값은 사내 관행)
+function branchInlet(zid){ const l=calcZone(zid).last; if(!l) return null; const bw=S.shape==='round'?l.d:l.w; return {name:zoneById(zid).name,bw,dim:l.dim,L:Math.max(200,ceil50(bw/4))}; }
 const mm=v=>{ const r=Math.round(v*10)/10; return Number.isInteger(r)?f0(r):r.toFixed(1); };
 function segTableHTML(){
   const round=S.shape==='round'; let rows='';
@@ -548,16 +560,20 @@ function segTableHTML(){
     res.segs.forEach((s,i)=>{ if(s.empty)return;
       const dW=(round?s.d:s.w)+2*s.plate, dH=(round?s.d:s.h)+2*s.plate;
       const chk=segChecks(s).map(c=>`<span class="badge ${c[0]}">${c[1]}</span>`).join(' ')||'<span class="badge b-ok">OK</span>';
+      const rd=reducerLen(i?res.segs[i-1]:null,s);
+      const br=(s.subs||[]).map(branchInlet).filter(Boolean);
+      const rdTxt=rd?`<b>${f0(rd.L)}</b> <span class="card-s">${rd.ex?'확대':'축소'} · ${rd.from}→</span>`:'—';
+      const brTxt=br.length?br.map(b=>`${esc(b.name)} 폭 ${f0(b.bw)} → <b>${f0(b.L)}</b>`).join('<br>'):'—';
       rows+=`<tr class="${s.type==='main'?'seg-main':''}"><td class="l"><b>${esc(z.name)}</b></td><td>${i+1}</td><td>${SEG_NAME[s.type]}</td><td>${f0(s.flow)}</td>
         <td><b>${s.dim}</b></td><td>${f2(s.vAct)}</td>${round?'':`<td>${f2(s.ar)}</td>`}<td>${s.plate}</td><td>${s.ins}</td>
         <td>${mm(dW)}</td><td>${mm(s.outW)}</td><td><b>${mm(s.totW)}</b></td>
-        <td>${mm(dH)}</td><td>${mm(s.outH)}</td><td><b>${mm(s.totH)}</b></td><td>${f0(s.ceil)}</td><td style="white-space:nowrap">${chk}</td></tr>`; }); }
+        <td>${mm(dH)}</td><td>${mm(s.outH)}</td><td><b>${mm(s.totH)}</b></td><td>${f0(s.ceil)}</td><td style="white-space:nowrap">${rdTxt}</td><td class="l" style="white-space:nowrap">${brTxt}</td><td style="white-space:nowrap">${chk}</td></tr>`; }); }
   if(!rows) return '';
   return `<div style="margin-top:16px"><b>구간별 덕트 치수 (도면용)</b><div class="tw" style="margin-top:6px"><table class="t"><thead>
     <tr><th rowspan="2">ZONE</th><th rowspan="2">순서</th><th rowspan="2">구간</th><th rowspan="2">풍량<br>(CMH)</th><th rowspan="2">덕트<br>(안치수)</th><th rowspan="2">실제<br>(m/s)</th>${round?'':'<th rowspan="2">아스펙트비</th>'}<th rowspan="2">판두께</th><th rowspan="2">보온</th>
-      <th colspan="3">폭 (mm)</th><th colspan="3">높이 (mm)</th><th rowspan="2">천장 속</th><th rowspan="2">검토</th></tr>
+      <th colspan="3">폭 (mm)</th><th colspan="3">높이 (mm)</th><th rowspan="2">천장 속</th><th rowspan="2">리듀서 길이<br>(앞 구간에서)</th><th rowspan="2">합류 분기 · 45° 입구 길이</th><th rowspan="2">검토</th></tr>
     <tr><th>덕트</th><th>+보온</th><th>+보온+바운더리</th><th>덕트</th><th>+보온</th><th>+보온+바운더리</th></tr></thead><tbody>${rows}</tbody></table></div>
-    <p class="note">덕트 = 안치수 + 판두께 × 2 · +보온 = 보온 두께 × 2 추가 · +바운더리 = 각 면 여유 추가 (폭 = 좌 + 우, 높이 = 위 + 아래). 천장 속 판정은 높이 +보온+바운더리 기준.</p></div>`;
+    <p class="note">덕트 = 안치수 + 판두께 × 2 · +보온 = 보온 두께 × 2 추가 · +바운더리 = 각 면 여유 추가 (폭 = 좌 + 우, 높이 = 위 + 아래). 천장 속 판정은 높이 +보온+바운더리 기준.<br>리듀서 길이 = 앞 구간(말단 쪽)과 크기가 다를 때. 줄어드는 양 a = 폭 차이 ÷ 2 (양쪽) 와 높이 차이 (밑면 맞춤) 중 큰 값, 원형은 지름 차이 ÷ 2. ${S.mode==='exhaust'?'배기 = 확대 한쪽 15° → a × 3.7':'급기 = 축소 한쪽 30° → a × 1.7'}, 최소 300 mm. 합류 분기 = 이 줄에서 들어오는 ZONE 의 마지막 덕트 폭과 45° 입구 길이 (폭 ÷ 4, 최소 200 mm).</p></div>`;
 }
 // ── 덕트 계통도 (SVG) — 왼쪽 말단 → 오른쪽 팬. 기구는 줄 위로, 합류 ZONE 은 아래로 붙는다
 function diagramSVG(){
