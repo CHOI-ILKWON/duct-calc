@@ -551,8 +551,8 @@ function reducerLen(prev,s){
   const ex=S.mode==='exhaust', k=ex?1/Math.tan(15*Math.PI/180):1/Math.tan(30*Math.PI/180);
   return {L:Math.max(300,ceil50(a*k)),ex,a,from:prev.dim};
 }
-// 분기 45° 입구 길이 — 분기 덕트 폭(메인을 따라가는 쪽 치수) ÷ 4, 최소 200 mm (SMACNA 계열 비율 · 원문 대조 필요, 최소값은 사내 관행)
-function branchInlet(zid){ const l=calcZone(zid).last; if(!l) return null; const bw=S.shape==='round'?l.d:l.w; return {name:zoneById(zid).name,bw,dim:l.dim,L:Math.max(200,ceil50(bw/4))}; }
+// 분기 45° 입구 길이 — 분기 덕트 폭(메인을 따라가는 쪽 치수) ÷ 4, 최소 150 mm (SMACNA 계열 비율 · 원문 대조 필요, 최소값은 사내 관행 2026-10-26)
+function branchInlet(zid){ const l=calcZone(zid).last; if(!l) return null; const bw=S.shape==='round'?l.d:l.w; return {name:zoneById(zid).name,bw,dim:l.dim,L:Math.max(150,ceil50(bw/4))}; }
 const mm=v=>{ const r=Math.round(v*10)/10; return Number.isInteger(r)?f0(r):r.toFixed(1); };
 function segTableHTML(){
   const round=S.shape==='round'; let rows='';
@@ -573,7 +573,7 @@ function segTableHTML(){
     <tr><th rowspan="2">ZONE</th><th rowspan="2">순서</th><th rowspan="2">구간</th><th rowspan="2">풍량<br>(CMH)</th><th rowspan="2">덕트<br>(안치수)</th><th rowspan="2">실제<br>(m/s)</th>${round?'':'<th rowspan="2">아스펙트비</th>'}<th rowspan="2">판두께</th><th rowspan="2">보온</th>
       <th colspan="3">폭 (mm)</th><th colspan="3">높이 (mm)</th><th rowspan="2">천장 속</th><th rowspan="2">리듀서 길이<br>(앞 구간에서)</th><th rowspan="2">합류 분기 · 45° 입구 길이</th><th rowspan="2">검토</th></tr>
     <tr><th>덕트</th><th>+보온</th><th>+보온+바운더리</th><th>덕트</th><th>+보온</th><th>+보온+바운더리</th></tr></thead><tbody>${rows}</tbody></table></div>
-    <p class="note">덕트 = 안치수 + 판두께 × 2 · +보온 = 보온 두께 × 2 추가 · +바운더리 = 각 면 여유 추가 (폭 = 좌 + 우, 높이 = 위 + 아래). 천장 속 판정은 높이 +보온+바운더리 기준.<br>리듀서 길이 = 앞 구간(말단 쪽)과 크기가 다를 때. 줄어드는 양 a = 폭 차이 ÷ 2 (양쪽) 와 높이 차이 (밑면 맞춤) 중 큰 값, 원형은 지름 차이 ÷ 2. ${S.mode==='exhaust'?'배기 = 확대 한쪽 15° → a × 3.7':'급기 = 축소 한쪽 30° → a × 1.7'}, 최소 300 mm. 합류 분기 = 이 줄에서 들어오는 ZONE 의 마지막 덕트 폭과 45° 입구 길이 (폭 ÷ 4, 최소 200 mm).</p></div>`;
+    <p class="note">덕트 = 안치수 + 판두께 × 2 · +보온 = 보온 두께 × 2 추가 · +바운더리 = 각 면 여유 추가 (폭 = 좌 + 우, 높이 = 위 + 아래). 천장 속 판정은 높이 +보온+바운더리 기준.<br>리듀서 길이 = 앞 구간(말단 쪽)과 크기가 다를 때. 줄어드는 양 a = 폭 차이 ÷ 2 (양쪽) 와 높이 차이 (밑면 맞춤) 중 큰 값, 원형은 지름 차이 ÷ 2. ${S.mode==='exhaust'?'배기 = 확대 한쪽 15° → a × 3.7':'급기 = 축소 한쪽 30° → a × 1.7'}, 최소 300 mm. 합류 분기 = 이 줄에서 들어오는 ZONE 의 마지막 덕트 폭과 45° 입구 길이 (폭 ÷ 4, 최소 150 mm).</p></div>`;
 }
 // ── 덕트 계통도 (SVG) — 왼쪽 말단 → 오른쪽 팬. 기구는 줄 위로, 합류 ZONE 은 아래로 붙는다
 function diagramSVG(){
