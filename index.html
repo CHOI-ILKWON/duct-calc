@@ -170,7 +170,7 @@ function pickStd(list,mm){ for(const d of list) if(d>=mm-1e-6) return d; return 
 const KEY='duct-calc-v2';
 let _n=0; const uid=p=>p+Date.now().toString(36).slice(-4)+(++_n).toString(36);
 function blank(){ return {v:2,project:'',mode:'supply',shape:'rect',device:'inline',ventOnly:true,ceil:600,
-  insGrade:'na',epi:true,insOff:false,mount:'bottom',fitGap:25,ventV:4.0,ventOpen:0.7,regOpen:0.65,grilleOpen:0.70,louverOpen:0.50,louverO:{w:null,h:null},
+  insGrade:'na',epi:true,insOff:false,mount:'bottom',fitGap:75,fitV2:true,ventV:4.0,ventOpen:0.7,regOpen:0.65,grilleOpen:0.70,louverOpen:0.50,louverO:{w:null,h:null},
   rooms:[],zones:[]}; }
 let S=blank();
 const $=id=>document.getElementById(id);
@@ -190,12 +190,14 @@ function termVelDefault(r){
   return u[5];
 }
 // 사각 기구 크기 — 필요 겉면적 이상 중 가장 작은 것, 아스펙트비 3 이하
-function rectPick(A,hLim=9999){
+// low = 덕트 직부 — 기구 짧은 변이 덕트 폭(하부)·높이(측면)를 정하므로 짧은 변이 가장 작은 것을 고른다
+function rectPick(A,hLim=9999,low=false){
   let best=null;
   for(const h of [100,150,200,250,300,350,400,450,500,600]){
     if(h>hLim) continue;
     const w=Math.max(h,ceil50(A*1e6/h)); const ar=w/h, a=w*h;
     if(ar>(hLim<9999?4:3)+1e-9) continue;
+    if(low){ best={w,h,a,ar}; break; }
     if(!best||a<best.a-1||(Math.abs(a-best.a)<1&&ar<best.ar)) best={w,h,a,ar};
   }
   if(best) return best;
@@ -224,7 +226,7 @@ function calcTerm(r){
   const a=kind==='grille'?S.grilleOpen:S.regOpen, A=Ak/a;
   // 측면 직부는 덕트 높이 상한, 크기가 고정된 덕트는 그 치수에서 여유를 뺀 만큼 → 기구를 낮고 넓게 고른다
   const hLim=Math.min(lim,S.mount==='side'&&S.shape!=='round'?hMax()-GAP():9999);
-  const p=rectPick(A,hLim), free=rectPick(A);
+  const low=S.mount!=='collar', p=rectPick(A,hLim,low), free=rectPick(A,9999,low);
   // 한쪽만 직접 정하면 다른 쪽을 필요 겉면적에 맞춰 다시 구한다
   let w=r.wO||p.w, h=r.hO||p.h;
   if(r.wO&&!r.hO) h=Math.max(100,ceil50(A*1e6/r.wO));
@@ -262,7 +264,10 @@ function normalize(){
 }
 const hMax=(c=S.ceil)=>Math.max(100,floor50(c-45-55-2*insT()-2*0.5));
 const zCeil=z=>(z&&z.ceil)||S.ceil;
-const GAP=()=>2*(S.fitGap??25);   // 기구 양쪽 여유 합 — 덕트 안치수 ≥ 기구 + 여유 × 2
+// 기구 양쪽 여유 합 — 덕트 안치수 ≥ 기구 + 여유 × 2.
+//   한쪽 75 mm = 사내 시공 관행 (레지스터 테두리 25~30 + 덕트 모서리 이음부를 피한 피스 자리 15~20 + 보온 마감·오차).
+//   50 mm 미만이면 테두리가 이음부에 걸린다 → 경고
+const GAP=()=>2*(S.fitGap??75);
 
 function sizeSeg(flow,V,ctx,ov){
   const A=flow/3600/V, ins=insT();
@@ -426,7 +431,7 @@ function renderSys(){
         ?[['collar','칼라·플렉시블 (제약 없음)'],['bottom','덕트 직부 (지름 ≥ 기구)']]
         :[['collar','칼라·플렉시블 (제약 없음)'],['bottom','덕트 하부 직부'],['side','덕트 측면 직부']],S.mount==='side'&&S.shape==='round'?'bottom':S.mount,"setSys('mount',this.value)")}
       <span class="fh">${S.mount==='collar'?'기구와 덕트 치수 연동 없음':S.shape==='round'?'기구가 붙는 줄의 덕트 지름 ≥ 기구 + 여유 × 2':S.mount==='bottom'?'기구가 붙는 줄의 덕트 폭 ≥ 기구 단변 + 여유 × 2':'덕트 높이 ≥ 기구 높이 + 여유 × 2 · 기구는 낮고 넓게'}</span></div>
-    ${S.mount==='collar'?'':`<div class="fg"><span class="fl">기구 여유 (한쪽, mm)</span><input class="fi" type="text" inputmode="decimal" value="${f0(S.fitGap??25)}" onchange="setSys('fitGap',this.value)"><span class="fh">덕트 안치수 = 기구 + ${f0(GAP())} mm 이상</span></div>`}
+    ${S.mount==='collar'?'':`<div class="fg"><span class="fl">기구 여유 (한쪽, mm)</span><input class="fi" type="text" inputmode="decimal" value="${f0(S.fitGap??75)}" onchange="setSys('fitGap',this.value)"><span class="fh"${(S.fitGap??75)<50?' style="color:var(--red)"':''}>${(S.fitGap??75)<50?'50 mm 미만 — 레지스터 테두리가 덕트 이음부에 걸릴 수 있음':`덕트 안치수 = 기구 + ${f0(GAP())} mm 이상 · 표준 75 · 최소 50`}</span></div>`}
     <div class="fg"><span class="fl">외벽 루버 개구율 (외기·배기)</span><input class="fi" type="text" inputmode="decimal" step="0.05" value="${S.louverOpen}" onchange="setSys('louverOpen',this.value)"><span class="fh">0.45 이하면 면적 보정 (KDS 4.4)</span></div>`}
     ${S.mode==='exhaust'&&!isCeil()?`<div class="fg"><span class="fl">흡입구 기준</span><label class="chk"><input type="checkbox" ${S.ventOnly?'checked':''} onchange="setSys('ventOnly',this.checked)">환기 전용 계통 (실내 흡입구 2.0 m/s)</label><span class="fh">학회 표 4.6 · 공조 계통이면 해제</span></div>`:''}
   </div>`;
@@ -604,6 +609,7 @@ function renderSummary(){
   const totalRoom=S.rooms.reduce((s,r)=>s+(+r.flow||0),0);
   const unused=outletList().filter(o=>!used.o.has(o.key));
   if(!S.rooms.length){ $('sumBox').innerHTML='<div class="empty">실이 없습니다.</div>'; return; }
+  if(S.mount!=='collar'&&!isCeil()&&(S.fitGap??75)<50) warns.push(['wi-warn',`기구 여유 한쪽 ${f0(S.fitGap)} mm — 최소 50 mm 미만이라 레지스터 테두리가 덕트 모서리 이음부에 걸릴 수 있습니다 (표준 75).`]);
   if(unused.length) warns.push(['wi-warn',`ZONE 에 연결되지 않은 기구 ${unused.length}개: ${unused.slice(0,12).map(o=>esc(o.label)).join(', ')}${unused.length>12?' …':''}`]);
   if(roots.length>1) warns.push(['wi-red',`팬에 연결된 ZONE 이 ${roots.length}개입니다 (${roots.map(id=>esc(zoneById(id).name)).join(', ')}). 한 계통 = 팬 1대이면 MAIN ZONE 하나로 합류시키세요.`]);
   for(const r of S.rooms){ const c=calcTerm(r); if(!c.ok) warns.push(['wi-red',`${esc(r.name)} — 선정 ${KIND_NAME[c.kind]} 크기에서 유효풍속 ${f2(c.vAct)} m/s 가 기준 ${f1(c.V)} 을 넘습니다.`]); }
@@ -715,7 +721,7 @@ function renderRef(){
   <p>열전도율 등급 가 20 · 나 25 · 다 30 · 라 35 mm. 에너지절약설계기준 EPI 7번 적용 시 ×1.2 후 5 mm 올림. 외기·배기·다습 구간은 결로 검토 별도. 주방배기는 불연재(화기 50 / 일반 25 이상), 제연덕트 25.</p>
   <h4>각 면 여유 (보온 바깥에서, mm) — 어림값</h4>
   <p>각형 장변 750 이하: 위 45 · 아래 55 · 좌우 75 / 760~1,500: 55 · 75 · 95 / 1,500 초과: 65 · 95 · 115<br>원형 600 이하: 위 40 · 아래 20 · 좌우 30 / 600 초과: 50 · 40 · 50<br>위 = 플랜지·볼트·작업 틈 · 아래 = 플랜지·지지앵글 · 좌우 = 플랜지·행거 볼트</p>
-  <h4>덕트 ↔ 기구 맞춤</h4><p>직부(하부·측면)이면 기구가 붙는 줄의 덕트 안치수 ≥ 기구 + 여유 × 2 (기본 한쪽 25 mm). 덕트가 자동이면 덕트를 키우고, 덕트 크기를 직접 정했거나 팬 쪽 고정 크기에 묶였으면 그 실의 기구를 낮고 넓게 다시 고른다. 크기 변경은 팬 쪽으로만 전파된다 — 말단·분기를 키우면 그보다 팬 쪽 구간이 따라 커지고, 팬 쪽을 줄여도 말단 쪽은 바뀌지 않으며 하류보다 작으면 「치수 역전」. 폭만 직접 정하면 높이를, 높이만 정하면 폭을 필요 면적에 맞춰 다시 구한다.</p>
+  <h4>덕트 ↔ 기구 맞춤</h4><p>직부(하부·측면)이면 기구가 붙는 줄의 덕트 안치수 ≥ 기구 + 여유 × 2 (한쪽 표준 75 · 최소 50 mm, 시공 관행). 직부일 때 기구는 짧은 변이 가장 작은 크기로 고른다 (아스펙트비 3 이하). 덕트가 자동이면 덕트를 키우고, 덕트 크기를 직접 정했거나 팬 쪽 고정 크기에 묶였으면 그 실의 기구를 낮고 넓게 다시 고른다. 크기 변경은 팬 쪽으로만 전파된다 — 말단·분기를 키우면 그보다 팬 쪽 구간이 따라 커지고, 팬 쪽을 줄여도 말단 쪽은 바뀌지 않으며 하류보다 작으면 「치수 역전」. 폭만 직접 정하면 높이를, 높이만 정하면 폭을 필요 면적에 맞춰 다시 구한다.</p>
   <h4>아스펙트비</h4><p>학회 설계기준 6장 (8) 「원칙적으로 4:1 이하」. 3 이하 양호 · 3~4 주의 · 4 초과 분할 검토. 4 에서 마찰 약 1.25 배.</p>
   <h4>루버 — KDS 31 25 30 4.4</h4><p>외기: 3,300 L/s 이상 전면풍속 2.0 m/s 이하, 미만 A = 0.4 + 0.00036Q · 배기: 2.5 m/s / A = 0.4 + 0.00025Q (원문 오탈자 재검증 필요) · 개구율 45% 이하 별도 산정.</p>
   <h4>팬 · 부속 — KDS 31 25 30</h4><p>흡입측 직관 날개지름 × 4 (또는 × 1 + 터닝베인 엘보) · 토출측 직관 출구 장변 × 1.5 · 엘보 곡률반경 1.5 이상 · 분지덕트 VD · 플렉시블 2.0 m 이하. 축소 한쪽 30° · 확대 한쪽 15° (KCS 31 20 20 3.1.2, 원문 대조 필요).</p>`;
@@ -826,6 +832,7 @@ function saveJSON(){
 function adopt(d){
   if(!d||d.v!==2||!Array.isArray(d.rooms)) throw new Error('형식');
   S=Object.assign(blank(),d); S.louverO=Object.assign({w:null,h:null},d.louverO||{});
+  if(!d.fitV2){ S.fitGap=75; S.fitV2=true; }   // 기구 여유 기본값 25 → 75 (2026-10-26)
   if(S.device==='ceiling'){ S.shape='round'; S.mode='exhaust'; }
 }
 function loadJSON(e){
