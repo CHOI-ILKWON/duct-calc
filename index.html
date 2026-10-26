@@ -170,7 +170,7 @@ function pickStd(list,mm){ for(const d of list) if(d>=mm-1e-6) return d; return 
 const KEY='duct-calc-v2';
 let _n=0; const uid=p=>p+Date.now().toString(36).slice(-4)+(++_n).toString(36);
 function blank(){ return {v:2,project:'',mode:'supply',shape:'rect',device:'inline',ventOnly:true,ceil:600,
-  insGrade:'na',epi:true,insOff:false,mount:'bottom',fitGap:25,ventV:4.0,ventOpen:1.0,regOpen:0.65,grilleOpen:0.70,louverOpen:0.50,louverO:{w:null,h:null},
+  insGrade:'na',epi:true,insOff:false,mount:'bottom',fitGap:25,ventV:4.0,ventOpen:0.7,regOpen:0.65,grilleOpen:0.70,louverOpen:0.50,louverO:{w:null,h:null},
   rooms:[],zones:[]}; }
 let S=blank();
 const $=id=>document.getElementById(id);
@@ -387,11 +387,12 @@ function calcLouver(Qcmh,exArg){
 
 // 벤트캡 (천정형팬 계통의 외벽 끝단)
 // 기준: 학회 「건축기계설비 설계기준」 표 4.6 배기루버 — 유효 개구면 풍속 4.0 m/s.
-//   벤트캡의 유효 개구면 = 공칭 단면 × 개구율(방충망·후드 형상, 카탈로그 값). 합류 후 전체 풍량으로 산정한다.
+//   벤트캡의 유효 개구면 = 공칭 단면 × 개구율. 방충망 부착을 기본으로 0.7 (방충망 개구율 통상 60~70%, 카탈로그 값 우선 · 판단).
+//   합류 후 전체 풍량으로 산정한다.
 //   KDS 31 25 30 4.4(2) 배기루버 면적식(A = 0.4 + 0.00025Q)은 벽 루버용이라 원형 벤트캡에는 참고로만 표시 (판단).
 const VENT=[100,125,150,200,250,300,350,400,450,500,550,600,650,700,750,800,900,1000,1100,1200];
 function calcVent(Q,d){
-  const V=S.ventV||4.0, a=S.ventOpen||1.0, need=Math.sqrt(4*Q/3600/(V*a)/Math.PI)*1000;
+  const V=S.ventV||4.0, a=S.ventOpen||0.7, need=Math.sqrt(4*Q/3600/(V*a)/Math.PI)*1000;
   const D=S.ventO||pickStd(VENT,Math.max(need,d||0)), area=Math.PI*D*D/4/1e6;
   const vEff=Q/3600/(area*a), red=d&&D>d?(D-d)/2/Math.tan(15*Math.PI/180):0;
   return {D,open:D+50,v:Q/3600/area,vEff,V,a,need,ok:vEff<=V+1e-6,red,kds:0.4+0.00025*Q/3.6};
@@ -686,9 +687,9 @@ function renderCeilSummary(Q,totalRoom,m,warns){
       <div class="row" style="border-top:1px dashed var(--border);margin-top:4px;padding-top:6px"><span>유효풍속 / 기준</span><span>${f2(V.vEff)} / ${f1(V.V)} m/s <span class="badge ${V.ok?'b-ok':'b-red'}">${V.ok?'OK':'초과'}</span></span></div>
       <div class="row"><span>필요 지름</span><span>φ${f0(V.need)} → ${V.D}A</span></div>
       ${V.red?`<div class="row"><span>덕트 φ${m.d} → ${V.D}A 확대 (한쪽 15°)</span><span>${f0(V.red)} mm 이상</span></div>`:''}
-      <div class="row no-print"><span>기준 유효풍속 · 개구율</span><span><input class="ti s${S.ventV!==4?' ov':''}" type="text" inputmode="decimal" value="${f1(V.V)}" onchange="setSys('ventV',this.value)"> <input class="ti s${S.ventOpen!==1?' ov':''}" type="text" inputmode="decimal" value="${f2(V.a)}" onchange="setSys('ventOpen',this.value)"></span></div>
+      <div class="row no-print"><span>기준 유효풍속 · 개구율</span><span><input class="ti s${S.ventV!==4?' ov':''}" type="text" inputmode="decimal" value="${f1(V.V)}" onchange="setSys('ventV',this.value)"> <input class="ti s${S.ventOpen!==0.7?' ov':''}" type="text" inputmode="decimal" value="${f2(V.a)}" onchange="setSys('ventOpen',this.value)"></span></div>
       <div class="row no-print"><span>크기 직접 입력 (A)</span><span><input class="ti s${S.ventO?' ov':''}" type="text" inputmode="decimal" value="${V.D}" onchange="ventSet(this.value)"></span></div>
-      <p class="note">기준: 학회 「건축기계설비 설계기준」 표 4.6 배기루버 유효 개구면 풍속 4.0 m/s · 합류 후 전체 풍량으로 산정. 개구율 = 방충망·후드 형상에 따른 유효 개구 비율 (카탈로그 값, 기본 1.0). 참고: KDS 31 25 30 4.4(2) 벽 배기루버 식으로는 ${f3(V.kds)} m² — 원형 벤트캡에는 적용하지 않음 (판단).</p></div>
+      <p class="note">기준: 학회 「건축기계설비 설계기준」 표 4.6 배기루버 유효 개구면 풍속 4.0 m/s · 합류 후 전체 풍량으로 산정. 개구율 = 방충망 부착 기준 0.7 (방충망 개구율 통상 60~70%, 카탈로그 값이 있으면 그 값). 참고: KDS 31 25 30 4.4(2) 벽 배기루버 식으로는 ${f3(V.kds)} m² — 원형 벤트캡에는 적용하지 않음 (판단).</p></div>
     <div class="sbox"><h4>보온 · 높이</h4>
       <div class="row"><span>보온 두께</span><span>${insT()} mm${S.insOff?' (없음)':''}</span></div>
       <div class="row"><span>덕트 설치 가능 높이</span><span>${f0(S.ceil)} mm</span></div>
@@ -705,7 +706,7 @@ function renderRef(){
   <ul style="margin-top:6px"><li>취출구·흡입구: ASHRAE HVAC Applications 소음 장 「유효개구면 최대 권장풍속」(RC 25~45) 계열. 학회 「건축기계설비 설계기준」 표 3.53 허용 취출풍속 상한(주거 4 · 사무 일반 6 등) 이내.</li>
   <li>환기 전용 계통의 실내 흡입구는 학회 표 4.6 의 2.0 m/s 를 우선 (화장실 천장은 3.0).</li>
   <li>화장실·샤워실 덕트 값은 설계 기본값. 천정형팬은 팬 접속구 지름에서 시작해 합류한다.</li>
-  <li>벤트캡: 학회 표 4.6 배기루버 유효 개구면 풍속 4.0 m/s 이하, 합류 후 전체 풍량 기준, 연결 덕트보다 작지 않게.</li>
+  <li>벤트캡: 학회 표 4.6 배기루버 유효 개구면 풍속 4.0 m/s 이하, 방충망 개구율 0.7, 합류 후 전체 풍량 기준, 연결 덕트보다 작지 않게.</li>
   <li>덕트: 설계 기본값. KDS 31 25 30 4.1(12) 주덕트 15 m/s 이하 = 저속덕트.</li>
   <li>최종 규격은 제조사 성능자료(NC · 도달거리 · 압력손실)로 확인.</li></ul>
   <h4>판두께 (mm) — 교재값, KCS 31 20 20 원문 대조 필요</h4>
