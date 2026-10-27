@@ -193,7 +193,12 @@ function transLen(up,dn,round){
 // 보온 — KCS 31 20 05 덕트 보온두께 (내부 10~40℃, RH 75% 미만). 열전도율 등급으로 정함
 const INS={ga:[20,'가 λ0.030~0.034'],na:[25,'나 λ0.035~0.040'],da:[30,'다 λ0.041~0.046'],ra:[35,'라 λ0.047~0.051']};
 // 에너지절약설계기준 EPI 기계 7번 — 국가건설기준 두께의 20% 이상 → 5 mm 단위로 올림
-const insT=()=>S.insOff?0:(S.epi?Math.ceil(INS[S.insGrade][0]*1.2/5-1e-9)*5:INS[S.insGrade][0]);
+const insThk=()=>S.epi?Math.ceil(INS[S.insGrade][0]*1.2/5-1e-9)*5:INS[S.insGrade][0];
+// 보온 여부 — 결로는 덕트 안 공기와 주변 온도 차이로 생긴다 (KDS 31 25 30 1.6(5)).
+//   기본: 급기(외기·전열교환기 SA) = 보온, 배기(실내 공기 · 전열교환기 RA · 천정형팬) = 보온 없음. ZONE 마다 켜고 끈다
+//   (외벽 가까운 배기·비난방 공간 통과 구간은 켜서 검토)
+const insDef=()=>!isCeil()&&S.mode==='supply';
+const insT=()=>S.insOff||!insDef()?0:insThk();
 
 // 판두께 — 각형은 장변, 원형(스파이럴)은 지름 기준. 교재값 · KCS 31 20 20 원문 대조 필요
 function plateRect(L){ if(L<=450)return .5; if(L<=750)return .6; if(L<=1500)return .8; if(L<=2200)return 1.0; return 1.2; }
@@ -212,7 +217,7 @@ function pickStd(list,mm){ for(const d of list) if(d>=mm-1e-6) return d; return 
 const KEY='duct-calc-v2';
 let _n=0; const uid=p=>p+Date.now().toString(36).slice(-4)+(++_n).toString(36);
 function blank(){ return {v:2,project:'',mode:'supply',shape:'rect',device:'inline',apt46:false,rcV:true,ceil:600,
-  insGrade:'na',epi:true,insOff:false,mount:'bottom',fitGap:75,fitV2:true,ventV:4.0,ventOpen:0.7,regOpen:0.65,grilleOpen:0.70,louverOpen:0.50,louverV:null,louverO:{w:null,h:null},
+  insGrade:'na',epi:true,insOff:false,insV:true,mount:'bottom',fitGap:75,fitV2:true,ventV:4.0,ventOpen:0.7,regOpen:0.65,grilleOpen:0.70,louverOpen:0.50,louverV:null,louverO:{w:null,h:null},
   redMode:'side',redShape:'conc',redAng:[30,15],pamW:null,
   rooms:[],zones:[]}; }
 let S=blank();
@@ -310,7 +315,7 @@ function normalize(){
   }
 }
 const hMax=(c=S.ceil,ins=insT())=>Math.max(100,floor50(c-45-55-2*ins-2*0.5));
-const zIns=z=>z&&z.insOff?0:insT();
+const zIns=z=>S.insOff?0:((z&&z.ins!=null)?z.ins:insDef())?insThk():0;
 const zCeil=z=>(z&&z.ceil)||S.ceil;
 // 기구 양쪽 여유 합 — 덕트 안치수 ≥ 기구 + 여유 × 2.
 //   한쪽 75 mm = 사내 시공 관행 (레지스터 테두리 25~30 + 덕트 모서리 이음부를 피한 피스 자리 15~20 + 보온 마감·오차).
@@ -504,8 +509,8 @@ function renderSys(){
     <div class="fg"><span class="fl">보온재 열전도율 등급</span>${sel(Object.entries(INS).map(([k,v])=>[k,v[1]+' · '+v[0]+'T']),S.insGrade,"setSys('insGrade',this.value)")}</div>
     <div class="fg"><span class="fl">보온 옵션</span>
       <label class="chk"><input type="checkbox" ${S.epi?'checked':''} onchange="setSys('epi',this.checked)">EPI 7번 (+20%)</label>
-      <label class="chk" style="height:auto"><input type="checkbox" ${S.insOff?'checked':''} onchange="setSys('insOff',this.checked)">보온 없음</label>
-      <span class="fh">적용 보온 두께 <b>${t} mm</b></span></div>
+      <label class="chk" style="height:auto"><input type="checkbox" ${S.insOff?'checked':''} onchange="setSys('insOff',this.checked)">전체 보온 없음</label>
+      <span class="fh">보온 두께 <b>${insThk()} mm</b> · 기본 ${S.insOff?'전체 없음':insDef()?'<b>켬</b> (급기 — 외기)':'<b>끔</b> (배기 — 실내 공기)'} · ZONE 마다 켜고 끔</span></div>
     <div class="fg"><span class="fl">리듀서 각도 기준</span>${sel([['side','한쪽 축소 30° · 확대 15°'],['ashrae','전체각 15° (ASHRAE 권장)'],['proj','프로젝트 지정']],S.redMode,"setSys('redMode',this.value)")}
       ${S.redMode==='proj'?`<div style="display:flex;gap:6px;align-items:center;font-size:12px">한쪽 축소 <input class="ti s" type="text" inputmode="decimal" value="${S.redAng[0]}" onchange="setRedAng(0,this.value)">° 확대 <input class="ti s" type="text" inputmode="decimal" value="${S.redAng[1]}" onchange="setRedAng(1,this.value)">°</div>`:''}
       <span class="fh">${S.redMode==='side'?'KCS 31 20 20 3.1.2 수치 · 각 측면 기준 (USFK 시방 정의)':S.redMode==='ashrae'?'손실·소음 저감용 완만한 권장 — 길이 약 4~7배':'승인된 상세도·시방의 각도'}</span></div>
@@ -596,7 +601,7 @@ function renderZones(){
       ${isRoot?`<span class="badge b-info">${isCeil()?'벤트캡 연결':'팬 연결'}</span>`:parent?`<span class="badge b-ok">→ ${esc(parent.name)} ${pRow}번 줄에 합류</span>`:'<span class="badge b-warn">미연결 — 다른 ZONE 의 줄에서 「+ 추가」로 붙이세요</span>'}
       <span class="card-s">${f0(res.flow)} CMH · 기구 ${res.outlets.length}개</span>
       <span style="flex:1"></span>
-      <label class="card-s" style="display:flex;gap:3px;align-items:center;cursor:pointer" title="결로 위험이 없는 실내 배기 구간 등"><input type="checkbox" ${z.insOff?'checked':''} onchange="zoneSet('${z.id}','insOff',this.checked)">보온 없음</label>
+      <label class="card-s" style="display:flex;gap:3px;align-items:center;cursor:pointer;${z.ins!=null?'color:var(--info);font-weight:700':''}" title="기본: ${insDef()?'급기 = 보온':'배기 = 보온 없음'}. 외벽 가까운 배기·비난방 공간 통과 구간은 켜서 결로 검토"><input type="checkbox" ${zIns(z)>0?'checked':''} ${S.insOff?'disabled':''} onchange="zoneSet('${z.id}','ins',this.checked)">보온</label>
       <span class="card-s">천장 속</span><input class="ti n${z.ceil?' ov':''}" type="text" inputmode="decimal" step="50" value="${f0(zCeil(z))}" title="이 ZONE 의 덕트 설치 가능 높이 (비우면 기본값)" onchange="zoneSet('${z.id}','ceil',this.value)">
       <button class="btn" onclick="rowAdd('${z.id}')">+ 줄</button>
       <button class="btn-x" title="ZONE 삭제" onclick="zoneDel('${z.id}')">✕</button></div>
@@ -615,7 +620,7 @@ function renderZones(){
       if(!s||s.empty){ h+=`<tr><td>${lab}</td><td class="l"><div class="chips">${chips}${addSel}${br}</div></td><td colspan="${round?7:8}" class="cv">기구 또는 ZONE 을 추가하세요</td><td style="white-space:nowrap">${ctl}</td></tr>`; return; }
       const chk=segChecks(s).map(c=>`<span class="badge ${c[0]}">${c[1]}</span>`).join(' ')||'<span class="badge b-ok">OK</span>';
       h+=`<tr class="${s.type==='main'?'seg-main':''}"><td>${lab}</td><td class="l"><div class="chips">${chips}${addSel}${br}</div></td>
-        <td><b>${f0(s.flow)}</b></td><td><select class="ti${row.tO?' ov':''}" style="width:64px" title="자동: ${SEG_NAME[s.typeAuto]} — 실제 역할(연결 구조·담당 풍량)이 다르면 바꾸세요" onchange="rowType('${z.id}','${row.id}',this.value)">${(isCeil()?['merge','fdis']:['main','branch','term']).map(t=>`<option value="${t}"${t===s.type?' selected':''}>${SEG_NAME[t]}</option>`).join('')}</select></td>
+        <td><b>${f0(s.flow)}</b></td><td><select class="ti${row.tO?' ov':''}" style="width:${isCeil()?92:64}px" title="자동: ${SEG_NAME[s.typeAuto]} — 실제 역할(연결 구조·담당 풍량)이 다르면 바꾸세요" onchange="rowType('${z.id}','${row.id}',this.value)">${(isCeil()?['merge','fdis']:['main','branch','term']).map(t=>`<option value="${t}"${t===s.type?' selected':''}>${SEG_NAME[t]}</option>`).join('')}</select></td>
         <td><input class="ti s${row.vO?' ov':''}" type="text" inputmode="decimal" step="0.1" value="${s.type==='fdis'&&!row.vO?'':f1(s.V)}" placeholder="${s.type==='fdis'?'Pa/m':''}" title="${s.type==='fdis'?'팬 토출관은 접속구 지름에서 시작해 Pa/m 목표로 키웁니다. 풍속을 넣으면 풍속으로 정함':''}" onchange="rowSet('${z.id}','${row.id}','vO',this.value)"></td>
         ${round?`<td><input class="ti s${row.dO?' ov':''}" type="text" inputmode="decimal" step="25" value="${f0(s.d)}" onchange="rowSet('${z.id}','${row.id}','dO',this.value)"></td>`
           :`<td><input class="ti s${row.wO?' ov':''}" type="text" inputmode="decimal" step="50" value="${f0(s.w)}" onchange="rowSet('${z.id}','${row.id}','wO',this.value)"></td>
@@ -655,15 +660,18 @@ function segTableHTML(){
       const rdTxt=rd?`<b>${f0(rd.L)}</b> <span class="card-s">${rd.kind} · 계산 ${f0(rd.raw)} · ${rd.from}</span>`:'—';
       const brTxt=br.length?br.map(b=>`${esc(b.name)} 폭 ${f0(b.bw)} → <b>${f0(b.L)}</b>`).join('<br>'):'—';
       rows+=`<tr class="${s.type==='main'?'seg-main':''}"><td class="l"><b>${esc(z.name)}</b></td><td>${i+1}</td><td>${SEG_NAME[s.type]}</td><td>${f0(s.flow)}</td>
-        <td><b>${s.dim}</b></td><td>${f2(s.vAct)}</td><td class="cv">${isFinite(s.vmax)?f1(s.vmax):'—'}</td><td${s.pam>pamWarn()+1e-9?' style="color:var(--warn);font-weight:700"':''}>${f2(s.pam)}</td>${round?'':`<td>${f2(s.ar)}</td>`}<td>${s.plate}</td><td>${s.ins}</td>
-        <td>${mm(dW)}</td><td>${mm(s.outW)}</td><td><b>${mm(s.totW)}</b></td>
-        <td>${mm(dH)}</td><td>${mm(s.outH)}</td><td><b>${mm(s.totH)}</b></td><td>${f0(s.ceil)}</td><td style="white-space:nowrap">${rdTxt}</td><td class="l" style="white-space:nowrap">${brTxt}</td><td style="white-space:nowrap">${chk}</td></tr>`; }); }
+        <td><b>${s.dim}</b></td><td>${f2(s.vAct)}</td><td class="cv">${isFinite(s.vmax)?f1(s.vmax):'—'}</td><td${s.pam>pamWarn()+1e-9?' style="color:var(--warn);font-weight:700"':''}>${f2(s.pam)}</td>${round?'':`<td>${f2(s.ar)}</td>`}<td>${s.plate}</td><td>${s.ins||'없음'}</td>
+        <td>${mm(dW)}</td><td${s.ins?'':' class="cv"'}>${s.ins?mm(s.outW):'—'}</td><td><b>${mm(s.totW)}</b></td>
+        <td>${mm(dH)}</td><td${s.ins?'':' class="cv"'}>${s.ins?mm(s.outH):'—'}</td><td><b>${mm(s.totH)}</b></td><td>${f0(s.ceil)}</td><td style="white-space:nowrap">${rdTxt}</td><td class="l" style="white-space:nowrap">${brTxt}</td><td style="white-space:nowrap">${chk}</td></tr>`; }); }
   if(!rows) return '';
+  // 보온 없는 구간은 덕트 + 바운더리. 섞여 있으면 「(보온)」
+  const segsAll=[]; for(const z of S.zones) for(const x of calcZone(z.id).segs) if(!x.empty) segsAll.push(x);
+  const nIns=segsAll.filter(x=>x.ins>0).length, tl=nIns===0?'덕트+바운더리':nIns===segsAll.length?'+보온+바운더리':'+(보온)+바운더리';
   return `<div style="margin-top:16px"><b>구간별 덕트 치수 (도면용)</b><div class="tw" style="margin-top:6px"><table class="t"><thead>
     <tr><th rowspan="2">ZONE</th><th rowspan="2">순서</th><th rowspan="2">구간</th><th rowspan="2">풍량<br>(CMH)</th><th rowspan="2">덕트<br>(안치수)</th><th rowspan="2">실제<br>(m/s, 단면)</th><th rowspan="2">상한<br>(m/s)</th><th rowspan="2">마찰<br>(Pa/m)</th>${round?'':'<th rowspan="2">아스펙트비</th>'}<th rowspan="2">판두께</th><th rowspan="2">보온</th>
       <th colspan="3">폭 (mm)</th><th colspan="3">높이 (mm)</th><th rowspan="2">천장 속</th><th rowspan="2">리듀서 길이<br>(앞 구간과)</th><th rowspan="2">합류 분기 · 45° 입구 길이 <span class="badge b-info">사내</span></th><th rowspan="2">검토</th></tr>
-    <tr><th>덕트</th><th>+보온</th><th>+보온+바운더리</th><th>덕트</th><th>+보온</th><th>+보온+바운더리</th></tr></thead><tbody>${rows}</tbody></table></div>
-    <p class="note">덕트 = 안치수 + 판두께 × 2 · +보온 = 보온 두께 × 2 추가 · +바운더리 = 각 면 여유 추가 (폭 = 좌 + 우, 높이 = 위 + 아래). 천장 속 판정은 높이 +보온+바운더리 기준.<br>마찰 = 직관 마찰손실 (상당지름 · ASHRAE 마찰계수 · 아연도강판). 경고 ${f1(pamWarn())} Pa/m 는 설계 목표이며, 충족해도 팬 성능 충족을 뜻하지 않음 — 부속·기구 손실을 더한 경로별 정압은 별도. 상한 = 사내 소음·저항 상한 (선정 후 실제 풍속으로 재검사).
+    <tr><th>덕트</th><th>+보온</th><th>${tl}</th><th>덕트</th><th>+보온</th><th>${tl}</th></tr></thead><tbody>${rows}</tbody></table></div>
+    <p class="note">덕트 = 안치수 + 판두께 × 2 · +보온 = 보온 두께 × 2 추가 (보온 없는 구간은 —) · +바운더리 = 각 면 여유 추가 (폭 = 좌 + 우, 높이 = 위 + 아래). 보온 없는 구간은 덕트 + 바운더리. 천장 속 판정은 맨 오른쪽 높이 기준.<br>마찰 = 직관 마찰손실 (상당지름 · ASHRAE 마찰계수 · 아연도강판). 경고 ${f1(pamWarn())} Pa/m 는 설계 목표이며, 충족해도 팬 성능 충족을 뜻하지 않음 — 부속·기구 손실을 더한 경로별 정압은 별도. 상한 = 사내 소음·저항 상한 (선정 후 실제 풍속으로 재검사).
     <br>리듀서 길이 = 앞 구간과 크기가 다를 때, 공기 흐름 방향으로 면마다 판정 (${redAngles().name}). 폭 이동량 = ${S.redShape==='ecc'?'ΔW (편심형, 한쪽 면 일직선)':'ΔW ÷ 2 (대칭형)'}, 높이 = ΔH (한쪽 면 맞춤), 원형 = ΔD ÷ 2. 길이 = 이동량 ÷ tan(한쪽 각도), 면별 큰 값 → 50 mm 올림 · 최소 300 mm (사내 제작값, 접속 직선부 제외). 합류 분기 = 이 줄에서 들어오는 ZONE 의 마지막 덕트 폭과 45° 입구 길이 (폭 ÷ 4, 최소 150 mm — 사내값).</p></div>`;
 }
 // ── 덕트 계통도 (SVG) — 왼쪽 말단 → 오른쪽 팬. 기구는 줄 위로, 합류 ZONE 은 아래로 붙는다
@@ -788,10 +796,12 @@ function renderSummary(){
       ${L.gap?'<p class="note">2,400~3,300 L/s 는 KDS 원문에 정해지지 않은 구간 — 면적식과 전면풍속 2.5 m/s 중 큰 면적을 쓰는 설계 보완값입니다.</p>':''}
       <p class="note">최종: 제품의 자유면적·압력손실·빗물 유입 방지 성능 확인.${ex?' 팬 뒤 양압 배기덕트는 거실 천장 속에 두지 않음 (KDS 1.6(6)).':''}</p></div>
     <div class="sbox"><h4>보온 · 높이</h4>
-      <div class="row"><span>보온 두께</span><span>${insT()} mm (${S.insOff?'없음':INS[S.insGrade][1].split(' ')[0]+'등급'+(S.epi?' +20%':'')})</span></div>
+      <div class="row"><span>보온 두께</span><span>${insThk()} mm (${INS[S.insGrade][1].split(' ')[0]+'등급'+(S.epi?' +20%':'')})</span></div>
+      <div class="row"><span>보온 적용</span><span>${S.insOff?'전체 없음':`기본 ${insDef()?'켬 (급기 — 외기)':'끔 (배기 — 실내 공기)'} · ZONE 별`}</span></div>
+      ${S.device==='hrv'?`<div class="row"><span>OA · EA 덕트 (본체 ↔ 외부)</span><span>${S.spigotD?'접속구 φ'+f0(S.spigotD)+' · ':''}<b>보온 필수</b></span></div>`:''}
       <div class="row"><span>덕트 설치 가능 높이</span><span>${f0(S.ceil)} mm</span></div>
       <div class="row"><span>덕트 높이 상한 (소형 기준)</span><span>${f0(hMax())} mm</span></div>
-      <p class="note">높이 상한 = 설치 가능 높이 − 위 45 − 아래 55 − 보온 × 2 − 판두께 × 2. 최종 판정은 구간별 필요 공간으로.</p></div>
+      <p class="note">높이 상한 = 설치 가능 높이 − 위 45 − 아래 55 − 보온 × 2 − 판두께 × 2. 최종 판정은 구간별 필요 공간으로.${S.mode==='exhaust'?' 배기는 실내 공기라 기본 보온 없음 — 팬 뒤 외벽까지 토출 구간·비난방 공간 통과 구간은 겨울 결로 검토 (ZONE 의 「보온」).':''}</p></div>
   </div>`;
     const wl=warns.length?warns.map(w=>`<div class="warn-item ${w[0]}">${w[1]}</div>`).join(''):'<div class="warn-item wi-ok">검토사항 없음</div>';
   $('sumBox').innerHTML=sq+espHTML()+stagesHTML()+`<div style="margin-top:14px"><b>검토사항</b><div class="warn-list" style="margin-top:6px">${wl}</div></div>`;
@@ -824,7 +834,7 @@ function renderCeilSummary(Q,totalRoom,m,warns){
       <p class="note">합류관 저항은 그 관을 지나는 팬 모두가 부담합니다. 아래 「팬별 경로」로 팬마다 확인하세요.</p></div>
     ${ventBox(Q,m?m.d:0,'VENT CAP (벤트캡)',true)}
     <div class="sbox"><h4>보온 · 높이</h4>
-      <div class="row"><span>보온 두께</span><span>${insT()} mm${S.insOff?' (없음)':''}</span></div>
+      <div class="row"><span>보온</span><span>기본 끔 (실내 공기) · 켜면 ${insThk()} mm</span></div>
       <div class="row"><span>덕트 설치 가능 높이</span><span>${f0(S.ceil)} mm</span></div>
       <p class="note">화장실 배기덕트는 실내 공기라 보온을 생략하기도 하나, 외벽 가까운 구간은 겨울철 결로를 검토.</p></div></div>
     ${fanPathsHTML()}${stagesHTML()}<div style="margin-top:14px"><b>검토사항</b><div class="warn-list" style="margin-top:6px">${wl}</div></div>`;
@@ -915,7 +925,7 @@ function renderRef(){
   <h4>그릴 직부 · 분기 입구 <span class="badge b-info">사내</span></h4><p>덕트 안치수 ≥ 기구 + 한쪽 75 (양쪽 150) mm. 실제 타공·목·프레임·이음부·보강재·댐퍼 삽입 간섭 확인. 분기 45° 입구 길이 = 폭 ÷ 4, 최소 150 mm.</p>
   <h4>댐퍼 · 팬 · 부속 <span class="badge b-red">법정</span> — KDS 31 25 30</h4><p>분지덕트 잠금형 VD (4.1(3), 4.3.1) · 높이 300 이상 댐퍼 다익 · 댐퍼 면풍속 1.5~7.5 m/s · 엘보 곡률반경 1.5 이상 · 주 덕트 가까이 말단기구 금지 (4.1(11)) · 흡입측 직관 날개지름 × 4 · 토출측 장변 × 1.5 · 플렉시블 2.0 m 이하.</p>
   <h4>아스펙트비 <span class="badge b-red">법정</span></h4><p>4 : 1 이내 원칙 (기계설비 기술기준 별표 9). 3 이하 양호 · 3~4 주의 · 4 초과 분할 검토.</p>
-  <h4>보온 <span class="badge b-warn">예비</span></h4><p>KCS 31 20 05 열전도율 등급 가 20 · 나 25 · 다 30 · 라 35 mm (내부 10~40℃, RH 75% 미만). EPI 7번 적용 시 ×1.2 후 5 mm 올림 — 현행 EPI 항목 적용 조건 확인 전까지 법정 의무로 보지 않음. 덕트 용도·통과 공간·온습도·결로로 구간별 판단 (ZONE 별 「보온 없음」).</p>
+  <h4>보온 <span class="badge b-warn">예비</span></h4><p>KCS 31 20 05 열전도율 등급 가 20 · 나 25 · 다 30 · 라 35 mm (내부 10~40℃, RH 75% 미만). EPI 7번 적용 시 ×1.2 후 5 mm 올림 — 현행 EPI 항목 적용 조건 확인 전까지 법정 의무로 보지 않음. 덕트 용도·통과 공간·온습도·결로로 구간별 판단 — 기본: 급기(외기·전열교환기 SA) 켬 · 배기(실내 공기·RA·천정형팬) 끔, ZONE 별 「보온」으로 켜고 끔. 전열교환기 OA·EA 는 보온 필수. 보온 없는 구간의 필요 공간 = 덕트 + 바운더리.</p>
   <h4>판두께 · 각 면 여유 <span class="badge b-warn">예비</span></h4><p>각형 장변: 450 이하 0.5 · 460~750 0.6 · 760~1,500 0.8 · 1,510~2,200 1.0 · 2,210 이상 1.2 / 원형: 200 이하 0.5 · 210~600 0.6 · 610~800 0.8 · 810~1,000 1.0 (교재값, KCS 31 20 20 표·압력등급 대조 필요).<br>여유(보온 바깥): 각형 장변 750 이하 위 45 · 아래 55 · 좌우 75 / 760~1,500: 55 · 75 · 95 / 초과 65 · 95 · 115 · 원형 600 이하 40 · 20 · 30 / 초과 50 · 40 · 50 (어림값).</p>`;
 }
 
@@ -958,7 +968,7 @@ const Z=id=>zoneById(id), R=(z,rid)=>z&&z.rows.find(r=>r.id===rid);
 function newRow(items=[]){ return {id:uid('w'),items,vO:null,wO:null,hO:null,dO:null}; }
 function zoneAdd(){ S.zones.unshift({id:uid('z'),name:'ZONE-'+(S.zones.length+1),rows:[newRow()]}); render(); }
 function zoneDel(id){ const z=Z(id); if(!z)return; ask(`「${z.name}」 ZONE 을 삭제할까요? 이 ZONE 에 합류하던 갈래 ZONE 은 「미연결」로 남습니다.`,()=>{ S.zones=S.zones.filter(x=>x.id!==id); render(); }); }
-function zoneSet(id,k,v){ const z=Z(id); if(!z)return; if(k==='insOff'){ z.insOff=!!v; return render(); } if(k==='ceil'){ const x=num(v); z.ceil=(x==null||x<=0||x===S.ceil)?null:x; } else z[k]=v; render(); }
+function zoneSet(id,k,v){ const z=Z(id); if(!z)return; if(k==='ins'){ z.ins=(!!v===insDef())?null:!!v; delete z.insOff; return render(); } if(k==='ceil'){ const x=num(v); z.ceil=(x==null||x<=0||x===S.ceil)?null:x; } else z[k]=v; render(); }
 // 이 줄에서 갈라지는 새 ZONE — 이름은 「상위이름-번호」, 만들자마자 이 줄에 합류시킨다
 function rowBranch(zid,rid){
   const z=Z(zid), r=R(z,rid); if(!r) return;
@@ -1036,6 +1046,8 @@ function adopt(d){
   // 실내 2.0 m/s 일괄 적용(ventOnly) 폐지 → 공동주택 환기 옵션(apt46, 기본 끔) · 내진 자동 상향(seisAvoid) 폐지 (2026-10-26)
   if(!d.rcV){ S.apt46=false; S.rcV=true; } delete S.ventOnly; delete S.seisAvoid;
   if(!Array.isArray(S.redAng)) S.redAng=[30,15];
+  // 보온 기본값 변경 (2026-10-27): 전에는 전체 보온 → 이전 파일은 결과가 바뀌지 않게 ZONE 마다 보온 켬으로 고정
+  if(!d.insV){ const fix=zs=>(zs||[]).forEach(z=>{ z.ins=z.insOff?false:true; delete z.insOff; }); fix(S.zones); if(S.other) fix(S.other.zones); S.insV=true; }
   if(S.device==='ceiling'){ S.shape='round'; S.mode='exhaust'; }
 }
 function loadJSON(e){
