@@ -200,6 +200,8 @@ const insThk=()=>S.epi?Math.ceil(INS[S.insGrade][0]*1.2/5-1e-9)*5:INS[S.insGrade
 const insDef=()=>!isCeil()&&S.mode==='supply';
 const insOn=()=>S.ins??insDef();
 const insT=()=>insOn()?insThk():0;
+// 전열교환기 외부 끝단 (OA·EA) — 기본은 덕트 형상을 따라감: 원형 → 원형 벤트캡, 사각 → 외벽 루버. 직접 고르면 그 값
+const outTermOf=()=>S.outTerm||(S.shape==='round'?'vent':'louver');
 
 // 판두께 — 각형은 장변, 원형(스파이럴)은 지름 기준. 교재값 · KCS 31 20 20 원문 대조 필요
 function plateRect(L){ if(L<=450)return .5; if(L<=750)return .6; if(L<=1500)return .8; if(L<=2200)return 1.0; return 1.2; }
@@ -518,7 +520,7 @@ function renderSys(){
       <span class="fh">${S.redMode==='side'?'KCS 31 20 20 3.1.2 수치 · 각 측면 기준 (USFK 시방 정의)':S.redMode==='ashrae'?'손실·소음 저감용 완만한 권장 — 길이 약 4~7배':'승인된 상세도·시방의 각도'}</span></div>
     <div class="fg"><span class="fl">리듀서 형상</span>${sel(S.shape==='round'?[['conc','동심 (ΔD/2)'],['ecc','편심 · 윗면 일직선 (ΔD)']]:[['conc','대칭형 (양쪽 ΔW/2)'],['ecc','편심형 (한쪽 면 일직선, ΔW)']],S.redShape,"setSys('redShape',this.value)")}<span class="fh">${S.shape==='round'?'천장이 낮으면 편심':'높이는 한쪽 면 맞춤 (ΔH)'} · 최소 300 mm = 사내값</span></div>
     ${S.device==='hrv'?`<div class="fg"><span class="fl">본체 접속구 φ (mm)</span><input class="fi${S.spigotD?' ov':''}" type="text" inputmode="decimal" placeholder="카탈로그 값" value="${S.spigotD||''}" onchange="setSys('spigotD',this.value)"><span class="fh">${S.shape==='round'?'본체에 붙는 줄의 덕트 ≥ 접속구. 크면 리듀서 길이 표시':'사각 덕트 — 접속구와 리듀서 길이만 표시'}</span></div>
-    <div class="fg"><span class="fl">외부 끝단 (OA · EA)</span>${sel([['louver','외벽 루버 (KDS 4.4)'],['vent','벤트캡 (사내 예비)']],S.outTerm||'louver',"setSys('outTerm',this.value)")}<span class="fh">주거·소형은 벤트캡이 많음</span></div>`:''}
+    <div class="fg"><span class="fl">외부 끝단 (OA · EA)</span>${sel([['louver','외벽 루버 (KDS 4.4)'],['vent','벤트캡 (사내 예비)']],outTermOf(),"setSys('outTerm',this.value)")}<span class="fh"${S.outTerm?' style="color:var(--info)"':''}>${S.outTerm?'직접 선택':'기본 = 덕트 형상 따라감 (원형 → 벤트캡 · 사각 → 루버)'}</span></div>`:''}
     <div class="fg"><span class="fl">마찰손실 경고 (Pa/m)</span><input class="fi" type="text" inputmode="decimal" placeholder="${pamWarn()}" value="${S.pamW??''}" onchange="setSys('pamW',this.value)"><span class="fh">비우면 ${isCeil()||S.device==='hrv'?'1.0 (HRV·천장팬 사내 검토값)':'1.5'} · ASHRAE 0.4~1.6 범위 · 법정 상한 아님</span></div>
     ${isCeil()?'':`<div class="fg"><span class="fl">기구 개구율 (레지스터 / 그릴) <span class="badge b-warn">예비</span></span><div style="display:flex;gap:6px"><input class="fi" style="width:50%" type="text" inputmode="decimal" step="0.05" value="${S.regOpen}" onchange="setSys('regOpen',this.value)"><input class="fi" style="width:50%" type="text" inputmode="decimal" step="0.05" value="${S.grilleOpen}" onchange="setSys('grilleOpen',this.value)"></div><span class="fh">제품 미선정 가정 — 제품 자료의 개구율(자유면적 ÷ 기준면적)로 교체</span></div>
     <div class="fg"><span class="fl">기구 접속 방식</span>${sel(S.shape==='round'
@@ -702,7 +704,7 @@ function diagramSVG(){
   const L=calcLouver(roots.length?calcZone(roots[0]).flow:0), ex=S.mode==='exhaust';
   let y=60; for(const r of roots){
     lay(r,0,y);
-    if(isCeil()||(S.device==='hrv'&&S.outTerm==='vent')){ const V=calcVent(calcZone(r).flow,(calcZone(r).last||{}).d,!isCeil());
+    if(isCeil()||(S.device==='hrv'&&outTermOf()==='vent')){ const V=calcVent(calcZone(r).flow,(calcZone(r).last||{}).d,!isCeil());
       if(!isCeil()){ el.push(`<line x1="0" y1="${y}" x2="20" y2="${y}" stroke="#1d4ed8" stroke-width="3"/><rect x="20" y="${y-16}" width="56" height="32" rx="6" fill="#eff6ff" stroke="#1d4ed8"/><line x1="76" y1="${y}" x2="110" y2="${y}" stroke="#334155" stroke-width="3"/><path d="M110 ${y-16} Q132 ${y} 110 ${y+16}" fill="#f1f5f9" stroke="#334155" stroke-width="1.5"/>`);
         txt.push(`<text x="48" y="${y+4}" class="dt-z" text-anchor="middle" style="fill:#1d4ed8">팬</text><text x="122" y="${y-24}" class="dt-s" text-anchor="middle">벤트캡</text><text x="122" y="${y+32}" class="dt-f" text-anchor="middle">${V.D}A</text>`);
         y+=ht(r)+20; continue; }
@@ -778,8 +780,8 @@ function renderSummary(){
       <div class="row"><span>${ex?'흡입측':'토출측'} 직관 (장변 × 1.5)</span><span>${f0(longSide*1.5)} mm 이상</span></div>
       <div class="row"><span>${ex?'토출측':'흡입측'} 직관</span><span>팬 날개지름 × 4 이상</span></div>`:'<div class="row"><span>ZONE 미구성</span><span>—</span></div>'}
       <p class="note">정압은 아래 「용량계산서 ESP 에 넣을 값」으로 용량계산서에서 산정.</p></div>
-    ${hrv&&otherQ?(S.outTerm==='vent'?ventBox(otherQ,0,(ex?'OA':'EA')+' 벤트캡 · 반대 탭 계통'):louverBox(calcLouver(otherQ,!ex),otherQ,!ex,true)):''}
-    ${hrv&&S.outTerm==='vent'?ventBox(Q,m&&m.d||0,(ex?'EA':'OA')+' 벤트캡 · 이 탭'):''}<div class="sbox"${hrv&&S.outTerm==='vent'?' style="display:none"':''}><h4>${ex?'배기 루버':'외기 루버'} — KDS 31 25 30 4.4(${ex?2:1})${hrv?' · 이 탭':''}</h4>
+    ${hrv&&otherQ?(outTermOf()==='vent'?ventBox(otherQ,0,(ex?'OA':'EA')+' 벤트캡 · 반대 탭 계통'):louverBox(calcLouver(otherQ,!ex),otherQ,!ex,true)):''}
+    ${hrv&&outTermOf()==='vent'?ventBox(Q,m&&m.d||0,(ex?'EA':'OA')+' 벤트캡 · 이 탭'):''}<div class="sbox"${hrv&&outTermOf()==='vent'?' style="display:none"':''}><h4>${ex?'배기 루버':'외기 루버'} — KDS 31 25 30 4.4(${ex?2:1})${hrv?' · 이 탭':''}</h4>
       <div class="row"><span>풍량 (CMH)</span><span><b>${f0(Q)}</b></span></div>
       <div class="row"><span>SIZE</span><span><b>${f0(L.w)} × ${f0(L.h)}</b></span></div>
       <div class="row"><span>OPENING SIZE</span><span><b>${f0(L.w+50)} × ${f0(L.h+50)}</b></span></div>
@@ -875,7 +877,7 @@ function espHTML(){
   const w=useL?withL.reduce((a,p)=>p.fr+p.dev>a.fr+a.dev?p:a,withL[0]):P.reduce((a,p)=>p.maxPam>a.maxPam?p:a,P[0]);
   const avg=useL&&w.L>0?w.fr/w.L:w.maxPam, dev=Math.max(...P.map(p=>p.dev));
   const R=(a,b,c)=>`<tr><td class="l"><b>${a}</b></td><td class="l" style="color:var(--accent);font-weight:700">${b}</td><td class="l" style="white-space:normal;color:var(--text2)">${c}</td></tr>`;
-  const out=S.device==='hrv'&&S.outTerm==='vent'?'벤트캡':'루버';
+  const out=S.device==='hrv'&&outTermOf()==='vent'?'벤트캡':'루버';
   return `<div style="margin-top:14px;padding:12px;border:1.5px solid var(--accent);border-radius:8px;background:var(--surface2)">
     <b>용량계산서 ${S.device==='hrv'?'전열교환기':'인라인덕트팬'} 「EXTERNAL STATIC PRESSURE」 에 넣을 값</b>${S.device==='hrv'?' <span class="card-s">— 급기 SA · 배기 RA 탭을 각각 확인</span>':''}
     <div class="tw" style="margin-top:6px"><table class="t"><thead><tr><th>용량계산서 칸</th><th>넣을 값</th><th>근거</th></tr></thead><tbody>
@@ -933,6 +935,7 @@ function renderRef(){
 function setIns(v){ S.ins=(!!v===insDef())?null:!!v; render(); }   // 기본값과 같으면 null — 계통(급기·배기)을 바꾸면 기본을 따라감
 function setRedAng(i,v){ const x=num(v); if(x>0&&x<90) S.redAng[i]=x; render(); }
 function setSys(k,v){
+  if(k==='outTerm'){ S.outTerm=v===(S.shape==='round'?'vent':'louver')?null:v; return render(); }
   if(k==='pamW'||k==='spigotD'){ const x=num(v); S[k]=x>0?x:null; return render(); }
   if(['ceil','regOpen','grilleOpen','louverOpen','fitGap','ventV','ventOpen'].includes(k)){ const x=num(v); if(x==null||x<0||(x===0&&k!=='fitGap')) return render(); S[k]=x; }
   else S[k]=v;
