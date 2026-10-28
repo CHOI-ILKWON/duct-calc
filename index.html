@@ -4,6 +4,12 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>환기 덕트 관경 계산서</title>
+<!-- 방문 측정 (GA4) — 위생 앱과 같은 속성. 페이지 경로·호스트로 앱을 나눠 본다 -->
+<script async src="https://www.googletagmanager.com/gtag/js?id=G-BL4VM4LDVL"></script>
+<script>
+  window.dataLayer=window.dataLayer||[]; function gtag(){ dataLayer.push(arguments); }
+  gtag('js',new Date()); gtag('config','G-BL4VM4LDVL',{app_name:'duct-calc'});
+</script>
 <style>
 :root{
   --bg:#f0f2f5;--surface:#fff;--surface2:#f8f9fa;--surface3:#eef1f5;
@@ -18,6 +24,8 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI','Noto Sans KR',sans
 .hdr input{height:32px;padding:0 10px;border:1px solid rgba(255,255,255,.35);border-radius:4px;background:rgba(255,255,255,.15);color:#fff;font-size:13px;width:180px;outline:none}
 .hdr input::placeholder{color:rgba(255,255,255,.6)}
 .hdr .sp{flex:1}
+.fb-t{width:100%;min-height:140px;padding:10px;border:1px solid var(--border2);border-radius:6px;font:inherit;font-size:13px;resize:vertical;outline:none}
+.fb-t:focus{border-color:var(--accent)}
 .hbtn{height:32px;padding:0 12px;border:1px solid rgba(255,255,255,.4);border-radius:4px;background:rgba(255,255,255,.15);color:#fff;font-size:13px;cursor:pointer;white-space:nowrap}
 .hbtn:hover{background:rgba(255,255,255,.28)}
 .wrap{max-width:1500px;margin:0 auto;padding:18px 18px 60px}
@@ -106,16 +114,26 @@ svg.diag{display:block;font-family:inherit}
   <h1>환기 덕트 관경 계산서</h1>
   <input id="projectName" placeholder="프로젝트명" onchange="S.project=this.value;save()">
   <span class="sp"></span>
-  <button class="hbtn" onclick="loadSample()">예시</button>
+  <button class="hbtn" onclick="loadSample();track('sample_open')">예시</button>
   <button class="hbtn" onclick="resetAll()">새로 시작</button>
   <button class="hbtn" onclick="saveJSON()">💾 저장</button>
   <button class="hbtn" onclick="$('loadFile').click()">📂 불러오기</button>
   <input type="file" id="loadFile" accept=".json" style="display:none" onchange="loadJSON(event)">
   <button class="hbtn" onclick="window.print()">🖨 PDF</button>
+  <button class="hbtn" onclick="fbOpen()" style="background:rgba(255,255,255,.28)">💬 의견 보내기</button>
 </header>
 
 <div id="dlg" class="dlg-bg" style="display:none"><div class="dlg"><div id="dlgMsg"></div><div class="dlg-b"><button class="btn" onclick="dlgClose()">취소</button><button class="btn btn-p" id="dlgYes">확인</button></div></div></div>
 <div id="toast" class="toast" style="display:none"></div>
+<div id="fb" class="dlg-bg" style="display:none"><div class="dlg" style="width:min(520px,92vw)">
+  <div style="font-weight:700;font-size:15px;margin-bottom:4px">의견 보내기</div>
+  <div class="card-s" style="margin-bottom:10px">틀린 계산, 불편한 점, 있었으면 하는 기능 무엇이든 편하게 적어 주세요.</div>
+  <textarea id="fbMsg" class="fb-t" maxlength="2000" placeholder="예) 원형 덕트에서 리듀서 길이가 이상하게 나옵니다 / 엑셀로 내보내기가 있으면 좋겠습니다"></textarea>
+  <input id="fbContact" class="fi" style="width:100%;margin-top:8px" maxlength="120" placeholder="답변 받을 연락처 (선택 — 이메일 등)">
+  <input id="fbWeb" tabindex="-1" autocomplete="off" style="position:absolute;left:-9999px;width:1px;height:1px" aria-hidden="true">
+  <div class="card-s" style="margin-top:8px">입력한 계산 내용은 보내지 않습니다. 장비·계통 종류만 함께 전달됩니다.</div>
+  <div class="dlg-b"><button class="btn" onclick="fbClose()">닫기</button><button class="btn btn-p" id="fbSend" onclick="fbSend()">보내기</button></div>
+</div></div>
 <div class="wrap">
   <div class="card"><div class="card-h"><span class="card-t">1. 계통 설정</span><span class="card-s">급기/배기 · 덕트 형상 · 천장 속 · 보온</span></div><div class="card-b" id="sysBox"></div></div>
   <div class="card"><div class="card-h"><span class="card-t">2. 실 · 기구</span><span class="card-s" id="roomSub"></span><span class="sp" style="flex:1"></span><button class="btn" onclick="roomAdd()">+ 실 추가</button></div><div class="card-b" id="roomBox"></div></div>
@@ -939,7 +957,7 @@ function setSys(k,v){
   if(k==='pamW'||k==='spigotD'){ const x=num(v); S[k]=x>0?x:null; return render(); }
   if(['ceil','regOpen','grilleOpen','louverOpen','fitGap','ventV','ventOpen'].includes(k)){ const x=num(v); if(x==null||x<0||(x===0&&k!=='fitGap')) return render(); S[k]=x; }
   else S[k]=v;
-  if(k==='device'){
+  if(k==='device'){ track('device_select',{device:v});
     if(v==='ceiling'){ S.shape='round'; S.mode='exhaust'; }
     if(v==='hrv'&&!S.other) S.other={rooms:[],zones:[],louverO:{w:null,h:null}};
     if(v==='hrv'){ S.shape='round'; S.mount='collar'; }   // 천장형 전열교환기는 접속구가 원형 — 스파이럴 + 칼라·플렉시블 (대형은 사각으로 바꿈)
@@ -1029,6 +1047,27 @@ function loadSample(force){
 }
 function resetAll(){ ask('모든 입력을 지우고 새로 시작할까요?',()=>{ S=blank(); render(); }); }
 
+// ── 방문 통계 · 의견 보내기 ─────────────────────────────────
+// 통계: GA4 이벤트 (저장·불러오기·PDF·예시·장비 선택). 측정 실패는 무시한다
+function track(name,params){ try{ if(window.gtag) gtag('event',name,Object.assign({app_name:'duct-calc'},params||{})); }catch(e){} }
+// 의견: 라이선스 백엔드(Apps Script)의 action=feedback 으로 보낸다 — 로그인 없음.
+//   POST + text/plain 이어야 preflight 없이 CORS 를 통과한다 (sanitary-pipe-calc auth.js 와 같은 방식)
+const FB_API='https://script.google.com/macros/s/AKfycbzOwmnJdBeqkH4QMdbQRagHXFnOA7sXnkQDmGeerVi4mYUF9WL_vB3C8LIq1-AZekQX/exec';
+function fbOpen(){ $('fb').style.display='flex'; setTimeout(()=>$('fbMsg').focus(),50); track('feedback_open'); }
+function fbClose(){ $('fb').style.display='none'; }
+function fbSend(){
+  const msg=$('fbMsg').value.trim(); if(msg.length<2) return toast('내용을 적어 주세요.');
+  const b=$('fbSend'); b.disabled=true; b.textContent='보내는 중…';
+  const ctx=`${{inline:'인라인',hrv:'전열교환기',ceiling:'천정형팬',ahu:'공조기'}[S.device]||S.device} · ${S.mode==='exhaust'?'배기':'급기'} · ${S.shape==='round'?'원형':'사각'}`;
+  fetch(FB_API,{method:'POST',headers:{'Content-Type':'text/plain;charset=utf-8'},
+    body:JSON.stringify({action:'feedback',appId:'duct',message:msg,contact:$('fbContact').value.trim(),website:$('fbWeb').value,page:location.host+location.pathname+' · '+ctx})})
+    .then(r=>r.text()).then(t=>{ const d=JSON.parse(t); if(d.ok===false) throw new Error(d.message||'오류');
+      $('fbMsg').value=''; fbClose(); toast(d.message||'보내주셔서 감사합니다.'); track('feedback_send'); })
+    .catch(()=>{ toast('전송에 실패했습니다. 잠시 뒤 다시 시도해 주세요.'); })
+    .finally(()=>{ b.disabled=false; b.textContent='보내기'; });
+}
+window.addEventListener('beforeprint',()=>track('pdf_print'));
+
 // ── 확인창 · 알림 (브라우저 confirm/alert 는 미리보기 창 등에서 막힐 수 있어 직접 그린다) ──
 let _yes=null;
 function ask(msg,yes){ _yes=yes; $('dlgMsg').textContent=msg; $('dlg').style.display='flex'; $('dlgYes').onclick=()=>{ const f=_yes; dlgClose(); f&&f(); }; }
@@ -1041,7 +1080,7 @@ function save(){ try{ localStorage.setItem(KEY,JSON.stringify(S)); }catch(e){} }
 function saveJSON(){
   const a=document.createElement('a');
   a.href=URL.createObjectURL(new Blob([JSON.stringify(S,null,2)],{type:'application/json'}));
-  a.download=`${S.project||'프로젝트'}_덕트.json`; a.click();
+  a.download=`${S.project||'프로젝트'}_덕트.json`; a.click(); track('json_save');
 }
 function adopt(d){
   if(!d||d.v!==2||!Array.isArray(d.rooms)) throw new Error('형식');
@@ -1058,7 +1097,7 @@ function adopt(d){
 function loadJSON(e){
   const f=e.target.files[0]; if(!f) return;
   const rd=new FileReader();
-  rd.onload=ev=>{ try{ adopt(JSON.parse(ev.target.result)); render(); }
+  rd.onload=ev=>{ try{ adopt(JSON.parse(ev.target.result)); render(); track('json_load'); }
     catch(err){ toast('불러오기 실패: 이 버전(ZONE 방식)으로 저장한 JSON 만 불러올 수 있습니다.'); } };
   rd.readAsText(f); e.target.value='';
 }
