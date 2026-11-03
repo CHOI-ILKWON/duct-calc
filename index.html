@@ -252,6 +252,37 @@ const num=(v,d=null)=>{const x=parseFloat(String(v??'').replace(/,/g,''));return
 // ── 기구 (취출구 · 흡입구) ───────────────────────────────────
 // 급기+사각 = 레지스터, 급기+원형 = 디퓨져(넥 개략), 배기 = 그릴
 const isCeil=()=>S.device==='ceiling';
+const isWall=()=>S.device==='wall';
+// 벽부형팬 선정표 — 사내 장비 선정 (2026-11-03). 풍량(CMH) = 모델 정격, 크기 = 팬 판이 벽에 붙는 부위, 개구 = 벽 타공
+//   대당 풍량 이상인 것 중 가장 작은 모델을 고른다
+const WALL_FANS=[
+//  CMH     날개Ø  WALL FAN   OPENING
+  [  750,   200,   336,       256],
+  [ 1020,   200,   336,       256],
+  [ 1060,   200,   336,       256],
+  [ 1200,   250,   416,       336],
+  [ 1470,   250,   416,       336],
+  [ 1500,   300,   496,       416],
+  [ 1950,   300,   496,       416],
+  [ 2050,   300,   496,       416],
+  [ 2800,   350,   496,       416],
+  [ 2900,   350,   496,       416],
+  [ 3500,   350,   496,       416],
+  [ 4000,   400,   576,       496],
+  [ 4320,   400,   576,       496],
+  [ 5500,   450,   656,       576],
+  [ 6400,   450,   656,       576],
+  [ 7620,   450,   656,       576],
+  [ 8800,   500,   656,       576],
+  [10020,   500,   656,       576],
+  [10600,   580,   816,       736],
+  [18000,   480,   656,       576],   // 원본 표 그대로 (Ø480 18,000) — 확인 필요
+].map(([q,d,sz,op])=>({q,d,sz,op}));
+function pickWallFan(r){
+  const cnt=Math.max(1,r.count|0), q=(+r.flow||0)/cnt;
+  const auto=WALL_FANS.find(f=>f.q>=q-1e-6)||null, f=(r.fanO&&WALL_FANS.find(x=>x.q===r.fanO))||auto;
+  return {cnt,q,f,auto,over:!auto,under:!!f&&f.q<q-1e-6};
+}
 const termKind=()=>isCeil()?'fan':S.mode==='exhaust'?'grille':(S.shape==='round'?'diff':'reg');
 const KIND_NAME={reg:'레지스터',diff:'디퓨져',grille:'그릴',fan:'천정형팬'};
 function termVelDefault(r){
@@ -480,7 +511,7 @@ function segChecks(s){
 //   미만은 전면면적 A = 0.4 + kQ (외기 k=0.00036, 배기 k=0.00025). 개구율 45% 이하는 별도 산정.
 //   배기는 원문이 3,300 이상 / 2,400 미만만 정하고 2,400~3,300 L/s 가 비어 있다 (2026판에서도 같음).
 //   그 구간은 「미명시 구간의 설계 보완」으로 A = max(0.4 + 0.00025Q, Q/2.5) — 원문 오기 수정이 아님.
-function calcLouver(Qcmh,exArg){
+function calcLouver(Qcmh,exArg,ovArg){
   const ex=exArg??S.mode==='exhaust', Ls=Qcmh/3.6, gap=ex&&Ls>=2400&&Ls<3300;
   let A=Ls>=3300?Qcmh/3600/(ex?2.5:2.0):0.4+(ex?0.00025:0.00036)*Ls, adj=false;
   if(gap) A=Math.max(A,Qcmh/3600/2.5);
@@ -490,7 +521,7 @@ function calcLouver(Qcmh,exArg){
   const Akds=A, tgt=S.louverV, Atgt=tgt?Qcmh/3600/tgt:0; let byTgt=false;
   if(Atgt>A){ A=Atgt; byTgt=true; }
   // 한쪽만 정하면 다른 쪽을 필요 전면면적에 맞춰 다시 구한다
-  const s=ceil50(Math.sqrt(A)*1000), oW=S.louverO.w, oH=S.louverO.h;
+  const ov=ovArg||S.louverO, s=ceil50(Math.sqrt(A)*1000), oW=ov.w, oH=ov.h;
   let h=oH||(oW?Math.max(100,ceil50(A*1e6/oW)):s), w=oW||Math.max(ceil50(A*1e6/h),100);
   if(!oW&&!oH&&w<h) [w,h]=[h,w];   // 자동이면 가로를 긴 쪽으로
   const area=w*h/1e6;
@@ -515,13 +546,18 @@ function render(){
   normalize(); solve();
   $('projectName').value=S.project||'';
   renderSys(); renderRooms(); renderZones(); renderSummary(); renderRef(); save();
+  $('zoneBox').closest('.card').style.display=isWall()?'none':'';
 }
 const sel=(opts,v,on)=>`<select class="fs" onchange="${on}">${opts.map(([k,t])=>`<option value="${k}"${k===v?' selected':''}>${esc(t)}</option>`).join('')}</select>`;
 function renderSys(){
   const t=insT();
-  $('sysBox').innerHTML=`<div class="grid">
-    <div class="fg"><span class="fl">장비</span>${sel([['inline','인라인덕트팬'],['hrv','전열교환기'],['ceiling','천정형팬'],['ahu','공조기']],S.device,"setSys('device',this.value)")}
-      <span class="fh">${S.device==='hrv'?'급기·배기 두 계통을 탭으로 나눠 계산':isCeil()?'팬 여러 대 → 덕트 합류 → 벤트캡':'팬 1대 · 덕트 계통 1개'}</span></div>
+  let H=`<div class="grid">
+    <div class="fg"><span class="fl">장비</span>${sel([['inline','인라인덕트팬'],['hrv','전열교환기'],['ceiling','천정형팬'],['wall','벽부형팬'],['ahu','공조기']],S.device,"setSys('device',this.value)")}
+      <span class="fh">${S.device==='hrv'?'급기·배기 두 계통을 탭으로 나눠 계산':isCeil()?'팬 여러 대 → 덕트 합류 → 벤트캡':isWall()?'덕트 없이 벽에 직접 — 팬 선정 + 루버':'팬 1대 · 덕트 계통 1개'}</span></div>`;
+  if(isWall()){ $('sysBox').innerHTML=H+`
+    <div class="fg"><span class="fl">팬 용도</span>${sel([['exhaust','배기 팬 (급기 = 외기 루버)'],['supply','급기 팬 (배기 = 배기 루버)']],S.mode,"setSys('mode',this.value)")}<span class="fh">기계실·전기실 = 배기 팬 + 자연급기 루버</span></div>
+    <div class="fg"><span class="fl">외벽 루버 개구율</span><input class="fi" type="text" inputmode="decimal" step="0.05" value="${S.louverOpen}" onchange="setSys('louverOpen',this.value)"><span class="fh">0.45 이하면 면적 보정 (KDS 4.4)</span></div></div>`; return; }
+  $('sysBox').innerHTML=H+`
     <div class="fg"><span class="fl">계통</span>${S.device==='hrv'
       ?`<div style="display:flex;gap:6px"><button class="btn${S.mode==='supply'?' btn-p':''}" style="flex:1;height:34px" onclick="hrvSide('supply')">급기 SA</button><button class="btn${S.mode==='exhaust'?' btn-p':''}" style="flex:1;height:34px" onclick="hrvSide('exhaust')">배기 RA</button></div>`
       :isCeil()?'<input class="fi" value="배기 (천정형팬)" disabled>'
@@ -550,7 +586,54 @@ function renderSys(){
     ${S.mode==='exhaust'&&!isCeil()?`<div class="fg"><span class="fl">흡입구 기준</span><label class="chk"><input type="checkbox" ${S.apt46?'checked':''} onchange="setSys('apt46',this.checked)">공동주택 환기 (학회 표 4.6)</label><span class="fh">켜면 실내 2.0 · 화장실 천장 3.0 m/s 상한. 기계실·공장 제외</span></div>`:''}
   </div>`;
 }
+// ── 벽부형팬 ────────────────────────────────────────────────
+const fmtWH=(w,h)=>`${f0(w)}W×${f0(h)}H`;
+function renderWall(){
+  $('roomSub').textContent='벽부형팬 · 대당 풍량 = 실 풍량 ÷ 대수 → 그 이상인 모델 중 가장 작은 것 (사내 선정표)';
+  if(!S.rooms.length){ $('roomBox').innerHTML=`<div class="empty">실을 추가하거나 상단의 「예시」를 눌러 보세요.</div>`; return; }
+  let h=`<div class="tw"><table class="t"><thead><tr><th>실명</th><th>풍량<br>(CMH)</th><th>팬<br>대수</th><th>대당 풍량<br>(CMH)</th><th>선정 모델<br>(CMH)</th><th>날개 Ø</th><th>WALL FAN SIZE<br>(벽 부착부)</th><th>OPENING SIZE</th><th>루버<br>개수</th><th>판정</th><th></th></tr></thead><tbody>`;
+  for(const r of S.rooms){ const p=pickWallFan(r), f=p.f;
+    const opts=`<option value="">자동${p.auto?' ('+f0(p.auto.q)+')':''}</option>`+WALL_FANS.map(x=>`<option value="${x.q}"${r.fanO===x.q?' selected':''}>${f0(x.q)} · Ø${x.d}</option>`).join('');
+    h+=`<tr><td><input class="ti w" value="${esc(r.name)}" onchange="roomSet('${r.id}','name',this.value)"></td>
+      <td><input class="ti n" type="text" inputmode="decimal" value="${f0(r.flow)}" onchange="roomSet('${r.id}','flow',this.value)"></td>
+      <td><input class="ti s" type="text" inputmode="decimal" value="${r.count}" onchange="roomSet('${r.id}','count',this.value)"></td>
+      <td class="cv">${f0(p.q)}</td>
+      <td><select class="ti${r.fanO?' ov':''}" style="width:120px" onchange="roomSet('${r.id}','fanO',this.value)">${opts}</select></td>
+      <td>${f?'Ø'+f.d:'—'}</td><td>${f?fmtWH(f.sz,f.sz):'—'}</td><td>${f?fmtWH(f.op,f.op):'—'}</td>
+      <td><input class="ti s" type="text" inputmode="decimal" value="${r.lc??1}" onchange="roomSet('${r.id}','lc',this.value)"></td>
+      <td>${p.over?'<span class="badge b-red">대수 늘리기</span>':p.under?'<span class="badge b-red">풍량 부족</span>':'<span class="badge b-ok">OK</span>'}</td>
+      <td><button class="btn-x" title="삭제" onclick="roomDel('${r.id}')">✕</button></td></tr>`; }
+  h+=`</tbody></table></div><p class="note">선정 모델을 비우면 자동 — 대당 풍량 이상인 모델 중 가장 작은 것. 모델을 직접 고르면 파란 글씨. 루버 개수 0 이면 루버를 내지 않음. 루버 풍량 = 선정 팬 풍량 × 대수 ÷ 루버 개수.</p>`;
+  $('roomBox').innerHTML=h;
+}
+function renderWallSummary(){
+  if(!S.rooms.length){ $('sumBox').innerHTML='<div class="empty">실이 없습니다.</div>'; return; }
+  const ex=S.mode==='supply', warns=[]; let n=0, nl=0, out='';
+  const nL=S.rooms.reduce((a,r)=>a+((r.lc??1)>0&&pickWallFan(r).f?(r.lc??1):0),0);
+  const row=(k,v)=>`<div class="row"><span>${k}</span><span><b>${v}</b></span></div>`;
+  for(const r of S.rooms){ const p=pickWallFan(r), f=p.f;
+    if(p.over) warns.push(['wi-red',`${esc(r.name)} — 대당 ${f0(p.q)} CMH 가 선정표 최대(${f0(WALL_FANS.reduce((a,x)=>Math.max(a,x.q),0))})를 넘습니다. 대수를 늘리세요.`]);
+    if(p.under) warns.push(['wi-red',`${esc(r.name)} — 직접 고른 ${f0(f.q)} CMH 모델이 대당 ${f0(p.q)} CMH 보다 작습니다.`]);
+    if(!f) continue;
+    let boxes='';
+    for(let i=0;i<p.cnt;i++){ n++;
+      boxes+=`<div class="sbox"><h4>WALL MOUNTED FAN-${n}</h4>${row('AIR VOL.',f0(f.q)+' CMH')}${row('WING SIZE','Ø'+f.d)}${row('SIZE',fmtWH(f.sz,f.sz))}${row('OPENING SIZE',fmtWH(f.op,f.op))}</div>`; }
+    const lc=r.lc??1, Qt=f.q*p.cnt;
+    if(lc>0){ const Q=Qt/lc, L=calcLouver(Q,ex,r.lO||{w:null,h:null});
+      for(let j=0;j<lc;j++){ nl++;
+        boxes+=`<div class="sbox"><h4>LOUVER${nL>1?'-'+nl:''} <span class="card-s">${ex?'배기':'외기'} · KDS 31 25 30 4.4(${ex?2:1})</span></h4>${row('AIR VOL.',f0(Q)+' CMH')}
+          <div class="row"><span>SIZE</span><span><input class="ti s${r.lO&&r.lO.w?' ov':''}" type="text" inputmode="decimal" step="50" value="${f0(L.w)}" onchange="wallLouverSet('${r.id}','w',this.value)">W × <input class="ti s${r.lO&&r.lO.h?' ov':''}" type="text" inputmode="decimal" step="50" value="${f0(L.h)}" onchange="wallLouverSet('${r.id}','h',this.value)">H</span></div>
+          ${row('OPENING SIZE',fmtWH(L.w+50,L.h+50))}${row('VELOCITY',f2(L.vFace)+' m/s')}
+          <div class="row"><span class="card-s">적용 식 · 필요 전면면적</span><span class="card-s">${L.rule} · ${f3(L.A)} m²${L.adj?' (개구율 보정)':''}</span></div>
+          <span class="badge ${L.ok?'b-ok':'b-red'}">${L.ok?'면적 OK':'면적 부족'}</span></div>`; } }
+    out+=`<div style="margin-bottom:14px"><b>${esc(r.name)}</b> <span class="card-s">${f0(r.flow)} CMH → ${p.cnt}대 × ${f0(f.q)} CMH = ${f0(Qt)} CMH${lc>0?` · 루버 ${lc}개`:' · 루버 없음'}</span><div class="sum" style="margin-top:6px">${boxes}</div></div>`; }
+  const wl=warns.length?warns.map(w=>`<div class="warn-item ${w[0]}">${w[1]}</div>`).join(''):'<div class="warn-item wi-ok">검토사항 없음</div>';
+  $('sumBox').innerHTML=out+`<p class="note">팬 규격 = 사내 장비 선정표 (최종은 제조사 카탈로그 확인). 루버 = KDS 31 25 30 4.4 — 3,300 L/s 미만은 A = 0.4 + ${ex?'0.00025':'0.00036'}Q. SIZE 의 가로·세로 중 하나를 바꾸면 다른 쪽이 필요 면적에 맞춰 50 mm 단위로 바뀜 (마지막에 바꾼 쪽 고정). OPENING = SIZE + 50.</p>
+    <div style="margin-top:14px"><b>검토사항</b><div class="warn-list" style="margin-top:6px">${wl}</div></div>`;
+}
+function wallLouverSet(id,k,v){ const r=S.rooms.find(r=>r.id===id); if(!r)return; const x=num(v); r.lO=r.lO||{w:null,h:null}; r.lO[k]=(x==null||x<=0)?null:x; r.lO[k==='w'?'h':'w']=null; render(); }
 function renderRooms(){
+  if(isWall()) return renderWall();
   const kind=termKind(), list=S.rooms;
   if(kind==='fan') return renderFans();
   $('roomSub').textContent=`${KIND_NAME[kind]} · 개당 풍량은 실 풍량 ÷ 개수 · 유효풍속 = 자유개구면 기준 (ASHRAE RC 표, 예비 선정값)`;
@@ -744,6 +827,7 @@ function zoneDepth(id){ let d=0,p=zoneParent(id); while(p&&d<50){ d++; p=zonePar
 function zonePath(id){ const L=[]; let p=zoneParent(id),d=0; while(p&&d<50){ L.unshift(esc(p.name)); p=zoneParent(p.id); d++; } return L.length?(isCeil()?'벤트캡 ‹ ':'팬 ‹ ')+L.join(' ‹ '):''; }
 function rootZones(){ const used=usedSets(); return S.zones.filter(z=>!used.z.has(z.id)&&z.rows.some(r=>r.items.length)).map(z=>z.id); }
 function renderSummary(){
+  if(isWall()) return renderWallSummary();
   const roots=rootZones(), om=outletMap(), used=usedSets(), warns=[];
   const totalRoom=S.rooms.reduce((s,r)=>s+(+r.flow||0),0);
   const unused=outletList().filter(o=>!used.o.has(o.key));
@@ -959,6 +1043,7 @@ function setSys(k,v){
   else S[k]=v;
   if(k==='device'){ track('device_select',{device:v});
     if(v==='ceiling'){ S.shape='round'; S.mode='exhaust'; }
+    if(v==='wall') S.mode='exhaust';
     if(v==='hrv'&&!S.other) S.other={rooms:[],zones:[],louverO:{w:null,h:null}};
     if(v==='hrv'){ S.shape='round'; S.mount='collar'; }   // 천장형 전열교환기는 접속구가 원형 — 스파이럴 + 칼라·플렉시블 (대형은 사각으로 바꿈)
   }
@@ -980,6 +1065,8 @@ function roomSet(id,k,v){
   if(k==='name'||k==='usage'){ r[k]=v; if(k==='usage'){ r.vO=null; r.rc=null; } }
   else if(k==='rc'){ r.rc=+v===RC_DEF[r.usage]?null:+v; r.vO=null; }
   else if(k==='count'){ r.count=Math.max(1,parseInt(v)||1); }
+  else if(k==='lc'){ r.lc=Math.max(0,parseInt(v)||0); }
+  else if(k==='fanO'){ r.fanO=v?+v:null; }
   else if(k==='flow'){ r.flow=Math.max(0,num(v,0)); }
   else { const x=num(v); r[k]=(x==null||x<=0)?null:x;
     // W·H 는 마지막에 바꾼 쪽만 고정하고 다른 쪽은 자동으로 되돌린다
@@ -1025,6 +1112,9 @@ function autoZones(force){
 function loadSample(force){
   if((S.rooms.length||S.zones.length)&&!force) return ask('현재 내용을 지우고 예시(A실 1,000 CMH × 4 · B실 1,200 CMH × 5)를 불러올까요?',()=>loadSample(true));
   const keep={mode:S.mode,shape:S.shape,device:S.device,mount:S.mount,spigotD:S.spigotD,outTerm:S.outTerm}; S=blank(); Object.assign(S,keep); S.project='예시';
+  if(isWall()){ S.mode='exhaust';
+    S.rooms=[{id:uid('r'),name:'전기실',usage:'mech',flow:2300,count:2,lc:1},{id:uid('r'),name:'기계실',usage:'mech',flow:9000,count:2,lc:1}];
+    return render(); }
   if(isCeil()){
     // 남·녀 화장실 천정형팬 각 4대 → 각 갈래로 모여 벤트캡 1개
     const M={id:uid('r'),name:'남자화장실',usage:'wc',flow:600,count:4}, F={id:uid('r'),name:'여자화장실',usage:'wc',flow:600,count:4};
