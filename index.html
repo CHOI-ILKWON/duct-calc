@@ -244,7 +244,9 @@ let _n=0; const uid=p=>p+Date.now().toString(36).slice(-4)+(++_n).toString(36);
 function blank(){ return {v:2,project:'',mode:'supply',shape:'rect',device:'inline',apt46:false,rcV:true,ceil:600,
   insGrade:'na',epi:true,ins:null,insV:2,mount:'bottom',fitGap:75,fitV2:true,ventV:4.0,ventOpen:0.7,regOpen:0.65,grilleOpen:0.70,louverOpen:0.50,louverV:null,louverO:{w:null,h:null},
   redMode:'side',redShape:'conc',redAng:[30,15],pamW:null,press:'low',termType:'reg',spacing:3.6,
-  rooms:[],zones:[]}; }
+  esp:espBlank(),rooms:[],zones:[]}; }
+// 용량계산서 「EXTERNAL STATIC PRESSURE」 중 덕트 앱이 알 수 없는 값 — 사용자가 넣는다 (null = 미입력)
+function espBlank(){ return {fdPa:null,vdPa:null,louPa:null,filtPa:null}; }
 let S=blank();
 const $=id=>document.getElementById(id);
 const esc=s=>String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
@@ -993,24 +995,38 @@ function pathsAll(){
   return out;
 }
 // 용량계산서(hvac-calc) 인라인덕트팬·전열교환기 「EXTERNAL STATIC PRESSURE」 에 옮겨 넣을 값
+//   위생 배관경 앱의 「부스터펌프 수두 계산 입력값」과 같은 방식 — 용량계산서 칸 순서 그대로, 넣을 값을 그대로 옮겨 쓴다
+//   자동: DUCT(최원 경로 길이 · 평균 Pa/m) · DIFF.(기구 개략) · VOL. DAMPER 개수
+//   수동(덕트 앱이 모르는 값): FIRE DAMPER · VD 개당 손실 · LOUVER 제품 손실 · 별도 FILTER — 이 상자에서 넣는다
 //   DUCT 의 Pa/m 2.0 은 계획 단계 개략값 — 덕트를 그린 뒤 이 값으로 바꾼다 (AC-026 Rule 8 · AC-028 Rule 3)
+function espSet(k,v){ const x=num(v); S.esp=S.esp||espBlank(); S.esp[k]=(x==null||x<0)?null:x; render(); }
 function espHTML(){
   const P=pathsAll(); if(!P.length) return '';
+  const E=Object.assign(espBlank(),S.esp||{});
   const withL=P.filter(p=>p.hasL), useL=withL.length>0;
   const w=useL?withL.reduce((a,p)=>p.fr+p.dev>a.fr+a.dev?p:a,withL[0]):P.reduce((a,p)=>p.maxPam>a.maxPam?p:a,P[0]);
-  const avg=useL&&w.L>0?w.fr/w.L:w.maxPam, dev=Math.max(...P.map(p=>p.dev));
-  const R=(a,b,c)=>`<tr><td class="l"><b>${a}</b></td><td class="l" style="color:var(--accent);font-weight:700">${b}</td><td class="l" style="white-space:normal;color:var(--text2)">${c}</td></tr>`;
+  const avg=useL&&w.L>0?w.fr/w.L:w.maxPam, dev=Math.max(...P.map(p=>p.dev)), devPa=dev>0?Math.ceil(dev):null;
   const out=S.device==='hrv'&&outTermOf()==='vent'?'벤트캡':'루버';
+  // 용량계산서 기본값 (미입력이면 용량계산서가 쓰는 값) — hvac-calc espHTML 과 같게
+  const vdPa=E.vdPa??10, louPa=E.louPa??50, fdPa=E.fdPa??0, filtPa=E.filtPa??0, diffPa=devPa??17;
+  const ductT=useL?w.L*avg:0, fitT=ductT*0.5, sub=ductT+fitT+diffPa+fdPa+w.vd*vdPa+louPa+filtPa, tot=sub*1.1, sel=Math.ceil(tot/50)*50||0;
+  const inp=(k,ph)=>`<input class="fi" style="width:70px;text-align:right" value="${E[k]??''}" placeholder="${ph}" onchange="espSet('${k}',this.value)">`;
+  const tag=(t,c)=>`<span style="font-size:10px;padding:1px 5px;border-radius:3px;margin-left:4px;background:${c==='a'?'var(--ok-bg,#dcfce7)':'var(--warn-bg)'};color:${c==='a'?'#166534':'#92400e'}">${t}</span>`;
+  const A=tag('자동','a'), M=tag('직접 입력','m');
+  const R=(a,b,c,src)=>`<tr><td class="l"><b>${a}</b>${src}</td><td class="l" style="color:var(--accent);font-weight:700;white-space:nowrap">${b}</td><td class="l" style="white-space:normal;color:var(--text2)">${c}</td></tr>`;
   return `<div style="margin-top:14px;padding:12px;border:1.5px solid var(--accent);border-radius:8px;background:var(--surface2)">
-    <b>용량계산서 ${S.device==='hrv'?'전열교환기':'인라인덕트팬'} 「EXTERNAL STATIC PRESSURE」 에 넣을 값</b>${S.device==='hrv'?' <span class="card-s">— 급기 SA · 배기 RA 탭을 각각 확인</span>':''}
-    <div class="tw" style="margin-top:6px"><table class="t"><thead><tr><th>용량계산서 칸</th><th>넣을 값</th><th>근거</th></tr></thead><tbody>
-    ${R('DUCT',useL?`${f1(w.L)} m × ${f2(avg)} Pa/m`:`(길이) m × ${f2(avg)} Pa/m`,useL?`가장 불리한 경로 「${esc(w.label)} → 팬」 직관 마찰 ${f1(w.fr)} Pa ÷ 길이 (실제 덕트 크기 기준). 길이를 넣은 경로 ${withL.length}/${P.length}개 중`:`구간 길이가 없어 경로 위 가장 큰 Pa/m (「${esc(w.label)}」 경로, 안전 쪽). 최원 경로 길이는 용량계산서에서 넣거나, 3번 표의 「길이」 칸을 채우면 경로 평균으로 바뀜`)}
-    ${R('FITTINGS','50 % (그대로)','용량계산서 기본 — 엘보·분기·리듀서 국부손실. 여유가 아님')}
-    ${R('DIFF. &amp; GRILLE',dev>0?`1 EA × ${f0(Math.ceil(dev))} Pa`:'제품값',dev>0?'선정 기구의 유효풍속 동압 × 3 (용량계산서와 같은 방법) — 예비. 제품 압력손실이 있으면 그 값':'기구 손실 정보 없음')}
-    ${R('VOL. DAMPER',`${w.vd} EA`,'그 경로가 거쳐 오는 분기 덕트(ZONE 합류) 수 — 분지덕트 VD (KDS 4.1(3))')}
-    ${R(out.toUpperCase()==='루버'?'LOUVER':'LOUVER (벤트캡)','제품값','<b>제품 손실 미확인</b> — 0 으로 두지 말 것. 모르면 용량계산서 기본 50 Pa 유지')}
+    <b>용량계산서 ${S.device==='hrv'?'전열교환기':'인라인덕트팬'} 「EXTERNAL STATIC PRESSURE」 에 옮겨 넣을 값</b>${S.device==='hrv'?' <span class="card-s">— 급기 SA · 배기 RA 탭을 각각 보고 큰 쪽을 넣음</span>':''}
+    <div class="tw" style="margin-top:6px"><table class="t"><thead><tr><th>용량계산서 칸</th><th>넣을 값</th><th>근거 · 입력</th></tr></thead><tbody>
+    ${R('DUCT',useL?`${f1(w.L)} m × ${f2(avg)} Pa/m`:`(길이) m × ${f2(avg)} Pa/m`,useL?`가장 불리한 경로 「${esc(w.label)} → 팬」 직관 마찰 ${f1(w.fr)} Pa ÷ 길이 (실제 덕트 크기 기준). 길이를 넣은 경로 ${withL.length}/${P.length}개 중`:`<b>3번 표의 구간 「길이」를 넣으면</b> 최원 경로 길이와 평균 Pa/m 가 나옴. 지금은 경로 위 가장 큰 Pa/m (안전 쪽)`,useL?A:M)}
+    ${R('FITTINGS','50 %','용량계산서 기본 그대로 — 엘보·분기·리듀서 국부손실 개략 (실시설계에서 부속 저항을 따로 구했으면 「부속 손실 ÷ 직관 손실 × 100」)','')}
+    ${R('DIFF. &amp; GRILLE',devPa?`1 EA × ${devPa} Pa`:'1 EA × 17 Pa',devPa?'최원 경로 기구 1개 — 선정 기구의 유효풍속 동압 × 3 (AC-028 Rule 2-1). 제품 압력손실이 있으면 그 값':'기구 손실 정보 없음 — 용량계산서 기본 17 Pa',A)}
+    ${R('FIRE DAMPER',`${f0(fdPa)} Pa`,`최원 경로상 방화댐퍼 손실 합계 ${inp('fdPa','0')} Pa — 없으면 0`,M)}
+    ${R('VOL. DAMPER',`${w.vd} EA × ${f0(vdPa)} Pa`,`개수 = 그 경로가 거쳐 오는 분기(ZONE 합류) 수 — 분지덕트 VD (KDS 31 25 30 4.1(3)) · 개당 손실 ${inp('vdPa','10')} Pa (비우면 용량계산서 기본 10)`,A)}
+    ${R('LOUVER / HOOD',`1 EA × ${f0(louPa)} Pa`,`${out} 제품 압력손실 ${inp('louPa','50')} Pa — ${E.louPa==null?'<b style="color:#92400e">제품값 미입력 · 용량계산서 기본 50 Pa 로 둠</b>':'제품값'}. 0 으로 두지 말 것`,M)}
+    ${R('FILTER (별도)',`${f0(filtPa)} Pa`,`별도 필터가 있을 때만 말기 압손 ${inp('filtPa','0')} Pa — 전열교환기·실내기 내장 필터는 넣지 않음 (AC-083)`,M)}
+    <tr style="border-top:2px solid var(--border)"><td class="l"><b>확인용 — 필요 기외정압</b></td><td class="l" style="font-weight:700;white-space:nowrap">${useL?sel+' Pa':'(길이 입력 후)'}</td><td class="l" style="white-space:normal;color:var(--text2)">${useL?`소계 ${f0(sub)} Pa × 1.1 → 50 Pa 올림. 용량계산서에 위 값을 옮기면 같은 값이 나와야 함`:'DUCT 길이가 없어 계산하지 않음'}</td></tr>
     </tbody></table></div>
-    <p class="note">이 값은 덕트 앱이 아는 범위(직관 마찰·기구 개략)만 채웁니다. 필터·방화댐퍼·제품 손실은 용량계산서에서. 선정 ESP 가 정해지면 카탈로그 정압-풍량 곡선으로 풍량을 확인.</p></div>`;
+    <p class="note">「자동」은 이 앱이 구한 값, 「직접 입력」은 이 앱이 알 수 없는 값(제품 손실 · 방화댐퍼 · 별도 필터)입니다. 입력하면 넣을 값과 확인용 합계가 바로 바뀝니다. 선정 ESP 가 정해지면 카탈로그 정압-풍량 곡선으로 풍량을 확인.</p></div>`;
 }
 // 천정형팬 — 팬마다 경로 손실 (가장 먼 팬이 늘 가장 불리하지는 않다)
 function fanPathsHTML(){
@@ -1078,8 +1094,8 @@ function setSys(k,v){
 function hrvSide(m){
   if(S.mode===m) return;
   const o=S.other||{rooms:[],zones:[],louverO:{w:null,h:null}};
-  S.other={rooms:S.rooms,zones:S.zones,louverO:S.louverO};
-  S.rooms=o.rooms; S.zones=o.zones; S.louverO=o.louverO||{w:null,h:null}; S.mode=m; render();
+  S.other={rooms:S.rooms,zones:S.zones,louverO:S.louverO,esp:S.esp};
+  S.rooms=o.rooms; S.zones=o.zones; S.louverO=o.louverO||{w:null,h:null}; S.esp=Object.assign(espBlank(),o.esp||{}); S.mode=m; render();
 }
 function roomAdd(){ const n=S.rooms.length; S.rooms.push({id:uid('r'),name:String.fromCharCode(65+(n%26))+(n>=26?n:''),usage:S.rooms[n-1]?.usage||'off',flow:500,count:2,vO:null,wO:null,hO:null,dO:null}); render(); }
 function roomDel(id){ const r=S.rooms.find(r=>r.id===id); if(!r)return; ask(`「${r.name}」 실을 삭제할까요? ZONE 에서도 빠집니다.`,()=>{ S.rooms=S.rooms.filter(r=>r.id!==id); render(); }); }
@@ -1197,7 +1213,7 @@ function saveJSON(){
 }
 function adopt(d){
   if(!d||d.v!==2||!Array.isArray(d.rooms)) throw new Error('형식');
-  S=Object.assign(blank(),d); S.louverO=Object.assign({w:null,h:null},d.louverO||{});
+  S=Object.assign(blank(),d); S.louverO=Object.assign({w:null,h:null},d.louverO||{}); S.esp=Object.assign(espBlank(),d.esp||{});
   if(!d.fitV2){ S.fitGap=75; S.fitV2=true; }   // 기구 여유 기본값 25 → 75 (2026-10-26)
   // 실내 2.0 m/s 일괄 적용(ventOnly) 폐지 → 공동주택 환기 옵션(apt46, 기본 끔) · 내진 자동 상향(seisAvoid) 폐지 (2026-10-26)
   if(!d.rcV){ S.apt46=false; S.rcV=true; } delete S.ventOnly; delete S.seisAvoid;
