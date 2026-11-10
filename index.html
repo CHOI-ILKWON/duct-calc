@@ -236,6 +236,15 @@ function oaeaRect(Q){
   const area=w*h/1e6;
   return {w,h,area,v:Q/3600/area,pam:pamOf(Q,{w,h}),dim:f0(w)+'×'+f0(h)};
 }
+// 루버 챔버 — 루버 ↔ 덕트 리듀서가 이 길이를 넘으면 리듀서 대신 챔버 (사내 판단값, 2026-11-10 사용자 지시)
+//   챔버 = 앞면 루버 SIZE × 깊이 300 (덕트 짧은 변 + 플랜지·여유로 옆면 접속이 되는 깊이, 사내값)
+//   덕트에서 루버로 밀어내는 쪽(배기)은 제트가 루버 가운데로 몰리므로 옆면(윗면) 접속 또는 타공판, 빨아들이는 쪽(외기)은 뒷면 접속
+const CHAMBER_L=1000, CHAMBER_D=300;
+function chamberRow(L,t,out){
+  if(!t||t.L<=CHAMBER_L) return '';
+  return `<div class="row"><span><b>루버 챔버</b> (리듀서 ${f0(t.L)} mm &gt; ${f0(CHAMBER_L)} — 리듀서 대신)</span><span><b>${f0(L.w)}×${f0(L.h)}×${CHAMBER_D}(D)</b></span></div>
+      <div class="row"><span>챔버 ↔ 덕트 접속</span><span>${out?'옆면(윗면) 접속 · 뒷면이면 타공판':'뒷면 접속'} · 리듀서 없음</span></div>`;
+}
 // 계통 요약의 OA·EA 덕트 줄 — 외부 끝단이 루버면 각형 크기·풍속·마찰과 접속구 리듀서, 벤트캡이면 접속구 지름
 function oaeaRows(Q,otherQ,ex){
   if(outTermOf()!=='louver') return `<div class="row"><span>OA · EA 덕트 (본체 ↔ 외부)</span><span>${S.spigotD?'접속구 φ'+f0(S.spigotD)+' · ':''}<b>보온 필수</b></span></div>`;
@@ -921,7 +930,7 @@ function renderSummary(){
   const oe=S.device==='hrv'&&outTermOf()==='louver'?oaeaRect(Q):null;
   if(m||oe){ const D=oe?{w:oe.w,h:oe.h}:{w:S.shape==='round'?m.d:m.w,h:S.shape==='round'?m.d:m.h}, Lv={w:L.w,h:L.h};
     const t=ex?transLen(D,Lv,false):transLen(Lv,D,false);
-    if(t) red=`<div class="row"><span>루버 ↔ ${oe?(ex?'EA':'OA')+' 덕트 '+oe.dim:'덕트'} ${t.kind} (${redAngles().name})</span><span>${f0(t.L)} mm 이상${t.L>1000?' · 챔버 권장':''}</span></div>`; }
+    if(t) red=t.L>CHAMBER_L?chamberRow(L,t,ex):`<div class="row"><span>루버 ↔ ${oe?(ex?'EA':'OA')+' 덕트 '+oe.dim:'덕트'} ${t.kind} (${redAngles().name})</span><span>${f0(t.L)} mm 이상</span></div>`; }
   const sq=`<div class="sum">
     <div class="sbox"><h4>팬 (${{inline:'인라인덕트팬',hrv:'전열교환기',ceiling:'천정형팬',ahu:'공조기'}[S.device]})</h4>
       <div class="big">${f0(Q)} CMH</div>
@@ -949,7 +958,7 @@ function renderSummary(){
       <div class="row no-print"><span>크기 직접 입력</span><span><input class="ti s${S.louverO.w?' ov':''}" type="text" inputmode="decimal" step="50" value="${f0(L.w)}" onchange="louverSet('w',this.value)"> × <input class="ti s${S.louverO.h?' ov':''}" type="text" inputmode="decimal" step="50" value="${f0(L.h)}" onchange="louverSet('h',this.value)"></span></div>
       <span class="badge ${L.ok?'b-ok':'b-red'}">${L.ok?'면적 OK':'면적 부족'}</span>
       ${L.gap?'<p class="note">2,400~3,300 L/s 는 KDS 원문에 정해지지 않은 구간 — 면적식과 전면풍속 2.5 m/s 중 큰 면적을 쓰는 설계 보완값입니다.</p>':''}
-      <p class="note">최종: 제품의 자유면적·압력손실·빗물 유입 방지 성능 확인.${ex?' 팬 뒤 양압 배기덕트는 거실 천장 속에 두지 않음 (KDS 1.6(6)).':''}</p></div>
+      <p class="note">최종: 제품의 자유면적·압력손실·빗물 유입 방지 성능 확인. 루버 ↔ 덕트 리듀서가 ${f0(CHAMBER_L)} mm 를 넘으면 리듀서 대신 루버 챔버(루버 SIZE × 깊이 ${CHAMBER_D}, 사내값) — 바닥은 바깥쪽 물빠짐 구배, 외기 챔버는 보온.${ex?' 팬 뒤 양압 배기덕트는 거실 천장 속에 두지 않음 (KDS 1.6(6)).':''}</p></div>
     <div class="sbox"><h4>보온 · 높이</h4>
       <div class="row"><span>보온</span><span>${insOn()?insThk()+' mm ('+INS[S.insGrade][1].split(' ')[0]+'등급'+(S.epi?' +20%':'')+')':'없음'}${S.ins!=null?' · 직접 설정':' · 기본'}</span></div>
       ${S.device==='hrv'?oaeaRows(Q,otherQ,ex):''}
@@ -976,7 +985,7 @@ function louverBox(L,Q,ex,other){
     <div class="row"><span>VELOCITY</span><span><b>${f2(L.vFace)} m/s</b></span></div>
     <div class="row" style="border-top:1px dashed var(--border);margin-top:4px;padding-top:6px"><span>적용 식</span><span>${L.rule}</span></div>
     ${(()=>{ const D=S.device==='hrv'?oaeaRect(Q):null; if(!D) return ''; const t=ex?transLen(D,{w:L.w,h:L.h},false):transLen({w:L.w,h:L.h},D,false);
-      return t?`<div class="row"><span>루버 ↔ ${ex?'EA':'OA'} 덕트 ${D.dim} ${t.kind} (${redAngles().name})</span><span>${f0(t.L)} mm 이상${t.L>1000?' · 챔버 권장':''}</span></div>`:''; })()}
+      return !t?'':t.L>CHAMBER_L?chamberRow(L,t,ex):`<div class="row"><span>루버 ↔ ${ex?'EA':'OA'} 덕트 ${D.dim} ${t.kind} (${redAngles().name})</span><span>${f0(t.L)} mm 이상</span></div>`; })()}
     <p class="note">크기 조정은 해당 탭에서 합니다.</p></div>`;
 }
 function renderCeilSummary(Q,totalRoom,m,warns){
