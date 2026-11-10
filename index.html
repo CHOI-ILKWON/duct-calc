@@ -221,6 +221,31 @@ const insOn=()=>S.ins??insDef();
 const insT=()=>insOn()?insThk():0;
 // 전열교환기 외부 끝단 (OA·EA) — 기본은 덕트 형상을 따라감: 원형 → 원형 벤트캡, 사각 → 외벽 루버. 직접 고르면 그 값
 const outTermOf=()=>S.outTerm||(S.shape==='round'?'vent':'louver');
+// 전열교환기 OA·EA 덕트 (본체 ↔ 외벽 루버) — 각형으로 뽑을 때의 크기 (2026-11-10 사용자 요청)
+//   단면적 ≥ 본체 접속구 단면적 (접속구보다 좁히지 않음) · 풍속 ≤ 메인 상한 (두 탭 실 용도 중 가장 낮은 값, AC-026 Rule 3)
+//   높이 ≤ 덕트 높이 상한 (OA·EA 는 보온 필수라 보온 두께 포함) · 아스펙트비 4 이하 · 50 mm 단위 · 폭 ≥ 높이
+//   접속구를 모르면 메인 목표풍속으로 낸 면적
+function oaeaRect(Q){
+  if(!(Q>0)) return null;
+  let rs=[...S.rooms,...(S.other&&S.other.rooms||[])]; if(!rs.length) rs=[{usage:'off'}];
+  const vmax=Math.min(...rs.map(r=>(VMAX[r.usage]||VMAX.off)[0])), vMain=Math.min(...rs.map(r=>U(r.usage)[SEG_COL.main]));
+  const need=Math.max(S.spigotD?Math.PI*S.spigotD*S.spigotD/4/1e6:Q/3600/vMain, Q/3600/vmax);
+  const HM=hMax(S.ceil,insThk());
+  let h=Math.min(HM,Math.max(100,floor50(Math.sqrt(need)*1000))), w=Math.max(h,ceil50(need*1e6/h));
+  while(w/h>4+1e-9&&h+50<=HM){ h+=50; w=Math.max(h,ceil50(need*1e6/h)); }
+  const area=w*h/1e6;
+  return {w,h,area,v:Q/3600/area,pam:pamOf(Q,{w,h}),dim:f0(w)+'×'+f0(h)};
+}
+// 계통 요약의 OA·EA 덕트 줄 — 외부 끝단이 루버면 각형 크기·풍속·마찰과 접속구 리듀서, 벤트캡이면 접속구 지름
+function oaeaRows(Q,otherQ,ex){
+  if(outTermOf()!=='louver') return `<div class="row"><span>OA · EA 덕트 (본체 ↔ 외부)</span><span>${S.spigotD?'접속구 φ'+f0(S.spigotD)+' · ':''}<b>보온 필수</b></span></div>`;
+  const oaQ=ex?otherQ:Q, eaQ=ex?Q:otherQ;
+  return [['OA','외벽 루버 → 본체',oaQ,true],['EA','본체 → 외벽 루버',eaQ,false]].map(([k,dir,q,isOA])=>{ const D=oaeaRect(q); if(!D) return '';
+    const sp=S.spigotD?{w:S.spigotD,h:S.spigotD}:null, t=sp?(isOA?transLen(D,sp,false):transLen(sp,D,false)):null;
+    return `<div class="row"><span>${k} 덕트 (${dir}, 각형)</span><span><b>${D.dim}</b> · ${f2(D.v)} m/s · ${f2(D.pam)} Pa/m${D.pam>pamWarn()+1e-9?' <span class="badge b-warn">목표 초과</span>':''}</span></div>`
+      +(sp?`<div class="row"><span>접속구 φ${f0(S.spigotD)} ↔ ${k} 덕트 ${D.dim}</span><span>${t?'리듀서 '+f0(t.L)+' mm':'같은 크기'}</span></div>`:''); }).join('')
+    +`<div class="row"><span>OA · EA 덕트 보온</span><span><b>보온 필수</b></span></div>`;
+}
 
 // 판두께 — KCS 31 20 20 : 2026 표 3.2-2(장방형, 앵글플랜지·코너볼트) · 표 3.2-4(스파이럴), 기술기준 [별표 9] 표 2 · 4 (2026-11-05 원문 확인, AC-027 Rule 4).
 //   압력등급: 저압 = 상용 ±500 Pa 이하 · 15 m/s 이하 / 고압 1·2. 기본 저압
@@ -892,9 +917,11 @@ function renderSummary(){
   const longSide=m?(S.shape==='round'?m.d:Math.max(m.w,m.h)):0;
   // 루버 ↔ 덕트 리듀서 길이 (한쪽 기준): 급기는 루버→덕트 축소 30°, 배기는 덕트→루버 확대 15°
   let red='';
-  if(m){ const D={w:S.shape==='round'?m.d:m.w,h:S.shape==='round'?m.d:m.h}, Lv={w:L.w,h:L.h};
+  // 전열교환기는 루버에 OA·EA 덕트가 붙는다 (실내 쪽 메인이 아님)
+  const oe=S.device==='hrv'&&outTermOf()==='louver'?oaeaRect(Q):null;
+  if(m||oe){ const D=oe?{w:oe.w,h:oe.h}:{w:S.shape==='round'?m.d:m.w,h:S.shape==='round'?m.d:m.h}, Lv={w:L.w,h:L.h};
     const t=ex?transLen(D,Lv,false):transLen(Lv,D,false);
-    if(t) red=`<div class="row"><span>루버 ↔ 덕트 ${t.kind} (${redAngles().name})</span><span>${f0(t.L)} mm 이상${t.L>1000?' · 챔버 권장':''}</span></div>`; }
+    if(t) red=`<div class="row"><span>루버 ↔ ${oe?(ex?'EA':'OA')+' 덕트 '+oe.dim:'덕트'} ${t.kind} (${redAngles().name})</span><span>${f0(t.L)} mm 이상${t.L>1000?' · 챔버 권장':''}</span></div>`; }
   const sq=`<div class="sum">
     <div class="sbox"><h4>팬 (${{inline:'인라인덕트팬',hrv:'전열교환기',ceiling:'천정형팬',ahu:'공조기'}[S.device]})</h4>
       <div class="big">${f0(Q)} CMH</div>
@@ -925,10 +952,10 @@ function renderSummary(){
       <p class="note">최종: 제품의 자유면적·압력손실·빗물 유입 방지 성능 확인.${ex?' 팬 뒤 양압 배기덕트는 거실 천장 속에 두지 않음 (KDS 1.6(6)).':''}</p></div>
     <div class="sbox"><h4>보온 · 높이</h4>
       <div class="row"><span>보온</span><span>${insOn()?insThk()+' mm ('+INS[S.insGrade][1].split(' ')[0]+'등급'+(S.epi?' +20%':'')+')':'없음'}${S.ins!=null?' · 직접 설정':' · 기본'}</span></div>
-      ${S.device==='hrv'?`<div class="row"><span>OA · EA 덕트 (본체 ↔ 외부)</span><span>${S.spigotD?'접속구 φ'+f0(S.spigotD)+' · ':''}<b>보온 필수</b></span></div>`:''}
+      ${S.device==='hrv'?oaeaRows(Q,otherQ,ex):''}
       <div class="row"><span>덕트 설치 가능 높이</span><span>${f0(S.ceil)} mm</span></div>
       <div class="row"><span>덕트 높이 상한 (소형 기준)</span><span>${f0(hMax())} mm</span></div>
-      <p class="note">높이 상한 = 설치 가능 높이 − 위 45 − 아래 55 − 보온 × 2 − 판두께 × 2. 최종 판정은 구간별 필요 공간으로.${S.mode==='exhaust'?' 배기는 실내 공기라 기본 보온 없음 — 팬 뒤 외벽까지 토출 구간·비난방 공간 통과 구간은 겨울 결로를 따로 검토.':''}</p></div>
+      <p class="note">높이 상한 = 설치 가능 높이 − 위 45 − 아래 55 − 보온 × 2 − 판두께 × 2. 최종 판정은 구간별 필요 공간으로.${S.device==='hrv'&&outTermOf()==='louver'?' OA·EA 각형 덕트 = 단면적 ≥ 본체 접속구 단면적(접속구를 모르면 메인 목표풍속) · 풍속 ≤ 메인 상한 · 높이 ≤ 보온 포함 높이 상한 · 아스펙트비 4 이하 · 50 mm 단위. 길이가 길면 한 치수 키워 마찰을 낮춤.':''}${S.mode==='exhaust'?' 배기는 실내 공기라 기본 보온 없음 — 팬 뒤 외벽까지 토출 구간·비난방 공간 통과 구간은 겨울 결로를 따로 검토.':''}</p></div>
   </div>`;
     const wl=warns.length?warns.map(w=>`<div class="warn-item ${w[0]}">${w[1]}</div>`).join(''):'<div class="warn-item wi-ok">검토사항 없음</div>';
   $('sumBox').innerHTML=sq+espHTML()+stagesHTML()+`<div style="margin-top:14px"><b>검토사항</b><div class="warn-list" style="margin-top:6px">${wl}</div></div>`;
@@ -948,6 +975,8 @@ function louverBox(L,Q,ex,other){
     <div class="row"><span>OPENING SIZE</span><span><b>${f0(L.w+50)} × ${f0(L.h+50)}</b></span></div>
     <div class="row"><span>VELOCITY</span><span><b>${f2(L.vFace)} m/s</b></span></div>
     <div class="row" style="border-top:1px dashed var(--border);margin-top:4px;padding-top:6px"><span>적용 식</span><span>${L.rule}</span></div>
+    ${(()=>{ const D=S.device==='hrv'?oaeaRect(Q):null; if(!D) return ''; const t=ex?transLen(D,{w:L.w,h:L.h},false):transLen({w:L.w,h:L.h},D,false);
+      return t?`<div class="row"><span>루버 ↔ ${ex?'EA':'OA'} 덕트 ${D.dim} ${t.kind} (${redAngles().name})</span><span>${f0(t.L)} mm 이상${t.L>1000?' · 챔버 권장':''}</span></div>`:''; })()}
     <p class="note">크기 조정은 해당 탭에서 합니다.</p></div>`;
 }
 function renderCeilSummary(Q,totalRoom,m,warns){
