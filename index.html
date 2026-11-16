@@ -278,7 +278,7 @@ const KEY='duct-calc-v2';
 let _n=0; const uid=p=>p+Date.now().toString(36).slice(-4)+(++_n).toString(36);
 function blank(){ return {v:2,project:'',mode:'supply',shape:'rect',device:'inline',apt46:false,rcV:true,ceil:600,
   insGrade:'na',epi:true,ins:null,insV:2,mount:'bottom',fitGap:75,fitV2:true,ventV:4.0,ventOpen:0.7,regOpen:0.65,grilleOpen:0.70,louverOpen:0.50,louverV:null,louverO:{w:null,h:null},
-  redMode:'side',redShape:'conc',redAng:[30,15],pamW:null,press:'low',termType:'reg',spacing:3.6,
+  redMode:'side',redShape:'conc',redAng:[30,15],pamW:null,press:'low',termType:'reg',spacing:null,spV2:true,
   esp:espBlank(),rooms:[],zones:[]}; }
 // 용량계산서 「EXTERNAL STATIC PRESSURE」 중 덕트 앱이 알 수 없는 값 — 사용자가 넣는다 (null = 미입력)
 function espBlank(){ return {fdPa:null,vdPa:null,louPa:null,filtPa:null}; }
@@ -337,7 +337,11 @@ function termVelDefault(r){
   return v[0];
 }
 // 기준: AC-039 Rule 3 — 개수 = 올림(가로 ÷ S) × 올림(세로 ÷ S). 실 가로·세로를 넣었을 때만 추천 (대기목록 A7)
-function gridRec(r){ const W=+r.rw||0, L=+r.rl||0, Sp=+S.spacing||3.6; if(!(W>0&&L>0&&Sp>0)) return null;
+// 기본 간격: 레지스터 · 그릴 5.0 m (학회 15.3 (2) 1) 「설치간격 5 m 이하」의 상한, 2026-11-16 사용자 결정) · 디퓨져 3.6 m (600 격자 × 6)
+//   S.spacing 에 값을 넣으면 그 값, 비우면 기구 종류별 기본
+const spDef=()=>termKind()==='diff'?3.6:5.0;
+const SP=()=>+S.spacing>0?+S.spacing:spDef();
+function gridRec(r){ const W=+r.rw||0, L=+r.rl||0, Sp=SP(); if(!(W>0&&L>0&&Sp>0)) return null;
   const nx=Math.max(1,Math.ceil(W/Sp-1e-9)), ny=Math.max(1,Math.ceil(L/Sp-1e-9)); return {S:Sp,nx,ny,n:nx*ny,sx:W/nx,sy:L/ny}; }
 // 사각 기구 크기 — 필요 겉면적 이상 중 가장 작은 것, 아스펙트비 3 이하
 // low = 덕트 직부 — 기구 짧은 변이 덕트 폭(하부)·높이(측면)를 정하므로 짧은 변이 가장 작은 것을 고른다
@@ -620,7 +624,7 @@ function renderSys(){
     <div class="fg"><span class="fl">덕트 형상</span>${isCeil()?'<input class="fi" value="원형 덕트 (스파이럴)" disabled>':sel([['rect','사각 덕트'],['round','원형 덕트 (스파이럴)']],S.shape,"setSys('shape',this.value)")}</div>
     <div class="fg"><span class="fl">덕트 압력등급</span>${sel([['low','저압 (상용 ±500 Pa 이하 · 15 m/s 이하)'],['high','고압 1 · 2']],S.press||'low',"setSys('press',this.value)")}<span class="fh">판두께 표가 바뀜 (KCS 31 20 20 표 3.2-2 · 3.2-4)</span></div>
     ${S.mode==='supply'&&S.shape!=='round'&&!isCeil()?`<div class="fg"><span class="fl">취출구 형식</span>${sel([['reg','레지스터 (사각 직부·칼라)'],['diff','디퓨져 (박스·칼라 경유)']],S.termType||'reg',"setSys('termType',this.value)")}<span class="fh">한 계통·한 실에 한 형식 — 학회 15.1 (2), AC-039 Rule 1</span></div>`:''}
-    ${isCeil()?'':`<div class="fg"><span class="fl">기구 간격 S (m)</span><input class="fi" type="text" inputmode="decimal" step="0.6" value="${S.spacing??3.6}" onchange="setSys('spacing',this.value)"><span class="fh">실 가로·세로를 넣으면 개수 추천 — 기본 3.6 (3~4 m, 천장 격자 600 배수) · AC-039 Rule 3</span></div>`}
+    ${isCeil()?'':`<div class="fg"><span class="fl">기구 간격 S (m)</span><input class="fi" type="text" inputmode="decimal" step="0.6" value="${S.spacing??''}" placeholder="${f1(spDef())}" onchange="setSys('spacing',this.value)"><span class="fh">실 가로·세로를 넣으면 개수 추천 — 비우면 기본 ${termKind()==='diff'?'3.6 (디퓨져, 천장 격자 600 배수)':'5.0 (레지스터·그릴, 학회 15.3 간격 5 m 이하)'} · AC-039 Rule 3</span></div>`}
     <div class="fg"><span class="fl">덕트 설치 가능 높이 (mm)</span><input class="fi" type="text" inputmode="decimal" step="50" value="${f0(S.ceil)}" onchange="setSys('ceil',this.value)"><span class="fh">기본값 · 보 밑 등은 ZONE 마다 따로 입력</span></div>
     <div class="fg"><span class="fl">보온재 열전도율 등급</span>${sel(Object.entries(INS).map(([k,v])=>[k,v[1]+' · '+v[0]+'T']),S.insGrade,"setSys('insGrade',this.value)")}</div>
     <div class="fg"><span class="fl">보온 옵션</span>
@@ -1116,6 +1120,7 @@ function setRedAng(i,v){ const x=num(v); if(x>0&&x<90) S.redAng[i]=x; render(); 
 function setSys(k,v){
   if(k==='outTerm'){ S.outTerm=v===(S.shape==='round'?'vent':'louver')?null:v; return render(); }
   if(k==='pamW'||k==='spigotD'){ const x=num(v); S[k]=x>0?x:null; return render(); }
+  if(k==='spacing'&&String(v??'').trim()===''){ S.spacing=null; return render(); }   // 비우면 기구 종류별 기본
   if(['ceil','regOpen','grilleOpen','louverOpen','fitGap','ventV','ventOpen','spacing'].includes(k)){ const x=num(v); if(x==null||x<0||(x===0&&k!=='fitGap')) return render(); S[k]=x; }
   else S[k]=v;
   if(k==='device'){ track('device_select',{device:v});
@@ -1258,6 +1263,8 @@ function adopt(d){
   // 실내 2.0 m/s 일괄 적용(ventOnly) 폐지 → 공동주택 환기 옵션(apt46, 기본 끔) · 내진 자동 상향(seisAvoid) 폐지 (2026-10-26)
   if(!d.rcV){ S.apt46=false; S.rcV=true; } delete S.ventOnly; delete S.seisAvoid;
   if(!Array.isArray(S.redAng)) S.redAng=[30,15];
+  // 간격 S 기본값 변경 (2026-11-16): 전에는 3.6 고정 → 이전 파일의 3.6 은 기본값이었으므로 비워서 기구 종류별 기본(레지스터 5.0)을 따르게 함
+  if(!d.spV2){ if(+d.spacing===3.6) S.spacing=null; S.spV2=true; }
   // 보온 기본값 변경 (2026-10-27): 전에는 전체 보온 → 이전 파일은 결과가 바뀌지 않게 그때 설정(insOff)을 그대로 씀
   if(d.insV!==2){ S.ins=d.insOff?false:true; const clr=zs=>(zs||[]).forEach(z=>{ delete z.ins; delete z.insOff; }); clr(S.zones); if(S.other) clr(S.other.zones); S.insV=2; }
   delete S.insOff;
