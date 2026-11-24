@@ -294,7 +294,16 @@ function blank(){ return {v:2,project:'',mode:'supply',shape:'rect',device:'inli
   esp:espBlank(),rooms:[],zones:[]}; }
 // 용량계산서 「EXTERNAL STATIC PRESSURE」 중 덕트 앱이 알 수 없는 값 — 사용자가 넣는다 (null = 미입력)
 //   sePa = 팬 시스템 효과 (KDS 31 25 30 4.2(2) 가산 의무 · 계산 없이 직접 입력, CH-20261123-04)
-function espBlank(){ return {fdPa:null,vdPa:null,louPa:null,filtPa:null,sePa:null}; }
+//   fdType 'curtain' = ASHRAE 커튼형 방화댐퍼 (fdEa 개 자동 계산) · null = 형식 미확정 → 제품값 fdPa 입력
+//   filtOn = 별도 필터 있음 (null = 예전 저장값에 filtPa 가 있으면 켬) · seOk = 팬 앞뒤 직관 확보 (null = 예전 저장값에 sePa 가 없으면 켬)
+function espBlank(){ return {fdPa:null,fdType:null,fdEa:null,vdPa:null,louPa:null,filtPa:null,filtOn:null,sePa:null,seOk:null}; }
+// 방화댐퍼 (커튼형, 개방) 손실계수 Co — 2001 ASHRAE Handbook Fundamentals (SI) Ch.34: 사각 CR9-6 Type B 0.19 (34.58) · 원형 CD9-3 Type C 0.12 (34.32).
+//   기준 단면 Ao = 덕트 단면. 2026-11-25 원문 쪽 확인 (최신판은 미확인). 회전 날개형 등 다른 형식에는 쓰지 않는다
+const FD_CO={rect:['CR9-6 커튼형 Type B',0.19],round:['CD9-3 커튼형 Type C',0.12]};
+// 루버 국부저항계수 ζ — 학회 「건축기계설비 설계기준」 2010 표 6.2 3) 루버 (자유면적비 A0/A → ζ). 그림의 v 는 날개 사이(A0) 풍속 → 자유면 풍속으로 계산
+//   표 범위(0.5~0.9) 안에서 직선 보간, 밖이면 null (제품값 필요)
+const LOU_Z=[[.5,4.5],[.6,3.0],[.7,2.1],[.8,1.4],[.9,1.0]];
+function louZeta(a){ for(let i=1;i<LOU_Z.length;i++){ const [x0,z0]=LOU_Z[i-1],[x1,z1]=LOU_Z[i]; if(a>=x0-1e-9&&a<=x1+1e-9) return z0+(z1-z0)*(a-x0)/(x1-x0); } return null; }
 let S=blank();
 const $=id=>document.getElementById(id);
 const esc=s=>String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
@@ -959,6 +968,7 @@ function renderSummary(){
   if(hrv&&otherQ&&Math.abs(otherQ-totalRoom)>0.5) warns.push(['wi-warn',`전열교환기 급기 ${f0(ex?otherQ:totalRoom)} CMH 와 배기 ${f0(ex?totalRoom:otherQ)} CMH 가 다릅니다. 실압 의도(양압·음압)가 아니면 맞추세요.`]);
   if(hrv&&!otherQ) warns.push(['wi-warn',`전열교환기 — ${ex?'급기 SA':'배기 RA'} 계통이 비어 있습니다. 상단 「계통」 탭에서 입력하세요.`]);
   // 기준: KDS 31 25 30 4.5 — 팬 흡입측 직관 ≥ 날개지름 × 4 (또는 ×1 + 터닝베인 엘보), 토출측 ≥ 출구 장변 × 1.5
+  //   팬 연결 덕트는 급기 = 토출측, 배기 = 흡입측. 배기의 토출측은 팬 출구 치수를 앱이 몰라 숫자를 내지 않는다 (2026-11-25 라벨 뒤바뀜 정정)
   const longSide=m?(S.shape==='round'?m.d:Math.max(m.w,m.h)):0;
   // 루버 ↔ 덕트 리듀서 길이 (한쪽 기준): 급기는 루버→덕트 축소 30°, 배기는 덕트→루버 확대 15°
   let red='';
@@ -974,8 +984,8 @@ function renderSummary(){
       ${m?`<div class="row"><span>팬 연결 덕트 (${esc(zoneById(roots[0]).name)})</span><span><b>${m.dim}</b> · ${f2(m.vAct)} m/s</span></div>
       ${hrv&&S.spigotD?(()=>{ const t=S.shape==='round'?transLen({d:S.spigotD},{d:m.d},true):transLen({w:S.spigotD,h:S.spigotD},{w:m.w,h:m.h},false);
         return `<div class="row"><span>본체 접속구 φ${f0(S.spigotD)} ↔ 덕트 ${m.dim}</span><span>${t?'리듀서 '+f0(t.L)+' mm':'같은 크기'}</span></div>`; })():''}
-      <div class="row"><span>${ex?'흡입측':'토출측'} 직관 (장변 × 1.5)</span><span>${f0(longSide*1.5)} mm 이상</span></div>
-      <div class="row"><span>${ex?'토출측':'흡입측'} 직관</span><span>팬 날개지름 × 4 이상</span></div>`:'<div class="row"><span>ZONE 미구성</span><span>—</span></div>'}
+      <div class="row"><span>흡입측 직관${ex?' (팬 연결 덕트)':''}</span><span>팬 날개지름 × 4 이상</span></div>
+      <div class="row"><span>토출측 직관${ex?'':' (장변 × 1.5)'}</span><span>${ex?'팬 출구 장변 × 1.5 이상':f0(longSide*1.5)+' mm 이상'}</span></div>`:'<div class="row"><span>ZONE 미구성</span><span>—</span></div>'}
       <p class="note">정압은 아래 「용량계산서 ESP 에 넣을 값」으로 용량계산서에서 산정.</p></div>
     ${hrv&&otherQ?(outTermOf()==='vent'?ventBox(otherQ,0,(ex?'OA':'EA')+' 벤트캡 · 반대 탭 계통'):louverBox(calcLouver(otherQ,!ex),otherQ,!ex,true)):''}
     ${hrv&&outTermOf()==='vent'?ventBox(Q,m&&m.d||0,(ex?'EA':'OA')+' 벤트캡 · 이 탭'):''}<div class="sbox"${hrv&&outTermOf()==='vent'?' style="display:none"':''}><h4>${ex?'배기 루버':'외기 루버'} — KDS 31 25 30 4.4(${ex?2:1})${hrv?' · 이 탭':''}</h4>
@@ -1071,9 +1081,11 @@ function pathsAll(){
 // 용량계산서(hvac-calc) 인라인덕트팬·전열교환기 「EXTERNAL STATIC PRESSURE」 에 옮겨 넣을 값
 //   위생 배관경 앱의 「부스터펌프 수두 계산 입력값」과 같은 방식 — 용량계산서 칸 순서 그대로, 넣을 값을 그대로 옮겨 쓴다
 //   자동: DUCT(최원 경로 길이 · 평균 Pa/m) · DIFF.(기구 개략) · VOL. DAMPER 개수
-//   수동(덕트 앱이 모르는 값): FIRE DAMPER · VD 개당 손실 · LOUVER 제품 손실 · 별도 FILTER — 이 상자에서 넣는다
+//   LOUVER = 학회 표 6.2 ζ × 자유면 동압 · F.D = 커튼형이면 ASHRAE Co × 동압 · FILTER 기본 0 (별도 필터 체크) · 시스템 효과 기본 0 (직관 확보 체크) — 2026-11-25 사용자
+//   제품값(방화댐퍼 · 루버 · 별도 필터 · 시스템 효과)이 있으면 이 상자에 넣은 값이 우선
 //   DUCT 의 Pa/m 2.0 은 계획 단계 개략값 — 덕트를 그린 뒤 이 값으로 바꾼다 (AC-026 Rule 8 · AC-028 Rule 3)
 function espSet(k,v){ const x=num(v); S.esp=S.esp||espBlank(); S.esp[k]=(x==null||x<0)?null:x; render(); }
+function espFlag(k,v){ S.esp=S.esp||espBlank(); S.esp[k]=v; render(); }
 function espHTML(){
   const P=pathsAll(); if(!P.length) return '';
   const E=Object.assign(espBlank(),S.esp||{});
@@ -1082,11 +1094,20 @@ function espHTML(){
   const avg=useL&&w.L>0?w.fr/w.L:w.maxPam, dev=Math.max(...P.map(p=>p.dev)), devPa=dev>0?Math.ceil(dev):null;
   const out=S.device==='hrv'&&outTermOf()==='vent'?'벤트캡':'루버';
   // 용량계산서 기본값 (미입력이면 용량계산서가 쓰는 값) — hvac-calc espHTML 과 같게
-  const vdPa=E.vdPa??10, louPa=E.louPa??50, fdPa=E.fdPa??0, filtPa=E.filtPa??0, sePa=E.sePa??0, diffPa=devPa??17;
+  const vdPa=E.vdPa??10, diffPa=devPa??17;
+  // F.D — 커튼형이면 개수 × Co × 동압 (풍속은 최원 경로에서 가장 빠른 구간 — 안전 쪽). 형식 미확정이면 제품값
+  const fdAuto=E.fdType==='curtain', fdC=FD_CO[S.shape==='round'?'round':'rect'], fdV=Math.max(...w.segs.map(x=>x.vAct)), fdEa=Math.max(0,Math.round(E.fdEa||0));
+  const fdPa=fdAuto?Math.ceil(fdEa*fdC[1]*0.6*fdV*fdV-1e-9):(E.fdPa??0);
+  // LOUVER — 제품값이 있으면 그 값, 없으면 ζ × 자유면 풍속 동압. 벤트캡이거나 개구율이 표 밖이면 용량계산서 기본 50
+  const rootF=calcZone(rootZones()[0]).flow, LV=out==='루버'?calcLouver(rootF):null, louZ=LV?louZeta(S.louverOpen):null;
+  const louAuto=louZ!=null?Math.ceil(louZ*0.6*LV.vFree*LV.vFree-1e-9):null, louPa=E.louPa??louAuto??50;
+  const filtOn=E.filtOn??(E.filtPa>0), filtPa=filtOn?(E.filtPa??0):0;
+  const seOk=E.seOk??!(E.sePa>0), sePa=seOk?0:(E.sePa??0);
   const ductT=useL?w.L*avg:0, fitT=ductT*0.5, sub=ductT+fitT+diffPa+fdPa+w.vd*vdPa+louPa+filtPa+sePa, tot=sub*1.1, sel=Math.ceil(tot/50)*50||0;
   const inp=(k,ph)=>`<input class="fi" style="width:70px;text-align:right" value="${E[k]??''}" placeholder="${ph}" onchange="espSet('${k}',this.value)">`;
   const tag=(t,c)=>`<span style="font-size:10px;padding:1px 5px;border-radius:3px;margin-left:4px;background:${c==='a'?'var(--ok-bg,#dcfce7)':'var(--warn-bg)'};color:${c==='a'?'#166534':'#92400e'}">${t}</span>`;
-  const A=tag('자동','a'), M=tag('직접 입력','m');
+  const A=tag('자동','a'), M=tag('직접 입력','m'), D0=tag('기본 0','a'), WN=t=>`<b style="color:#92400e">${t}</b>`;
+  const chk=(k,on,txt)=>`<label style="display:inline-flex;gap:5px;align-items:center;cursor:pointer;margin-right:8px;color:var(--text)"><input type="checkbox" ${on?'checked':''} onchange="espFlag('${k}',this.checked)">${txt}</label>`;
   // 표기: 「앱간_값옮기기_표기기준」 2.1 (CH-20261123-06) — 다섯 열 고정, 줄 순서·이름은 2.3 (hvac-calc ESP 표 이름 그대로)
   const dev2=S.device==='hrv'?'전열교환기':'인라인덕트팬', at=`ESP › `;
   const R=(no,name,src,val,unit,note)=>`<tr><td>${no}</td><td class="l" style="white-space:normal"><b>${name}</b>${src}${note?`<div style="font-size:11px;color:var(--text2);margin-top:2px">${note}</div>`:''}</td><td class="l" style="color:#1d4ed8;font-weight:700;white-space:nowrap">${val}</td><td>${unit}</td><td class="l">${at}${name}</td></tr>`;
@@ -1098,13 +1119,13 @@ function espHTML(){
     ${R('②','FITTINGS','','50','%','용량계산서 기본 그대로 — 엘보·분기·리듀서 국부손실 개략 (실시설계에서 부속 저항을 따로 구했으면 「부속 손실 ÷ 직관 손실 × 100」)')}
     ${R('③','DIFF.&amp;GRILLE',A,`1 × ${devPa||17}`,'EA × Pa',devPa?'최원 경로 기구 1개 — 선정 기구의 유효풍속 동압 × 3 (AC-028 Rule 2-1). 제품 압력손실이 있으면 그 값':'기구 손실 정보 없음 — 용량계산서 기본 17 Pa')}
     ${R('④','V.D',A,`${w.vd} × ${f0(vdPa)}`,'EA × Pa',`개수 = 그 경로가 거쳐 오는 분기(ZONE 합류) 수 — 분지덕트 VD (KDS 31 25 30 4.1(3)) · 개당 손실 ${inp('vdPa','10')} Pa (비우면 용량계산서 기본 10)`)}
-    ${R('⑤','F.D',M,f0(fdPa),'Pa',`최원 경로상 방화댐퍼 손실 합계 ${inp('fdPa','0')} Pa — 없으면 0`)}
-    ${R('⑥','LOUVER',M,`1 × ${f0(louPa)}`,'EA × Pa',`${out} 제품 압력손실 ${inp('louPa','50')} Pa — ${E.louPa==null?'<b style="color:#92400e">제품값 미입력 · 용량계산서 기본 50 Pa 로 둠</b>':'제품값'}. 0 으로 두지 말 것`)}
-    ${R('⑦','FILTER',M,f0(filtPa),'Pa',`별도 필터가 있을 때만 말기 압손 ${inp('filtPa','0')} Pa — 전열교환기·실내기 내장 필터는 넣지 않음 (AC-083)`)}
-    ${R('⑧','FAN SYSTEM EFFECT (팬 시스템 효과)',M,f0(sePa),'Pa',`팬 흡입·토출 접속 상태로 생기는 손실 ${inp('sePa','0')} Pa — KDS 31 25 30 4.2(2) 「팬 정압에 가산」. 제품 자료·ASHRAE 시스템 효과 계수로 구해 넣음. 흡입 직관 날개지름 × 4 · 토출 직관 장변 × 1.5 (KDS 4.5) 를 지키면 0 으로 둘 수 있음${E.sePa==null?' <b style="color:#92400e">· 미입력 (0)</b>':''}`)}
+    ${R('⑤','F.D',fdAuto?A:E.fdPa?M:D0,f0(fdPa),'Pa',`<select class="fs" style="height:30px;font-size:12px" onchange="espFlag('fdType',this.value||null)"><option value=""${fdAuto?'':' selected'}>형식 미확정 · 그 밖 (제품값)</option><option value="curtain"${fdAuto?' selected':''}>커튼형 (${fdC[0]}, Co ${fdC[1]})</option></select> ${fdAuto?`최원 경로 통과 개수 ${inp('fdEa','0')} EA × Co ${fdC[1]} × 0.6 × ${f2(fdV)}² (경로에서 가장 빠른 구간 풍속) — 2001 ASHRAE Fundamentals Ch.34 ${fdC[0]}`:`방화구획을 지나면 제품 손실 합계 ${inp('fdPa','0')} Pa · 지나지 않으면 0`}`)}
+    ${R('⑥','LOUVER',E.louPa!=null?M:louAuto!=null?A:M,`1 × ${f0(louPa)}`,'EA × Pa',`${louAuto!=null?`자동 ${f0(louAuto)} Pa = ζ ${f2(louZ)} (자유면적비 ${f2(S.louverOpen)}, 학회 2010 표 6.2) × 0.6 × 자유면 풍속 ${f2(LV.vFree)}²`:WN(out==='루버'?`개구율 ${f2(S.louverOpen)} 은 학회 표 6.2 범위(0.5~0.9) 밖 — 제품값 필요, 지금은 용량계산서 기본 50 Pa`:'벤트캡 계수 자료 없음 — 제품값 필요, 지금은 용량계산서 기본 50 Pa')} · 제품값이 있으면 ${inp('louPa',louAuto!=null?f0(louAuto):'50')} Pa`)}
+    ${R('⑦','FILTER',filtOn?M:D0,f0(filtPa),'Pa',chk('filtOn',filtOn,'별도 필터 있음')+(filtOn?`말기 압손 ${inp('filtPa','0')} Pa${E.filtPa==null?' '+WN('· 미입력'):''}`:'장비 내장 필터는 제조사 기외정압에 포함 — 0 (AC-083)'))}
+    ${R('⑧','FAN SYSTEM EFFECT (팬 시스템 효과)',seOk?D0:M,f0(sePa),'Pa',chk('seOk',seOk,'팬 앞뒤 직관 확보')+(seOk?'흡입측 날개지름 × 4 · 토출측 장변 × 1.5 이상 (KDS 31 25 30 4.5) → 0':`제품 자료로 손실 ${inp('sePa','0')} Pa${E.sePa==null?' '+WN('· 미입력 — 팬 정압에 가산해야 함 (KDS 31 25 30 4.2(2))'):''}`))}
     <tr style="border-top:2px solid var(--border)"><td></td><td class="l"><b>확인용 — 필요 기외정압</b> <span class="card-s">(옮겨 적지 않음)</span></td><td class="l" style="font-weight:700;white-space:nowrap">${useL?sel:'—'}</td><td>Pa</td><td class="l" style="white-space:normal;color:var(--text2)">${useL?`소계 ${f0(sub)} Pa × 1.1 → 50 Pa 올림. 위 값을 옮기면 용량계산서도 같은 값`:'DUCT 길이가 없어 계산하지 않음'}</td></tr>
     </tbody></table></div>
-    <p class="note">「자동」은 이 앱이 구한 값, 「직접 입력」은 이 앱이 알 수 없는 값(제품 손실 · 방화댐퍼 · 별도 필터 · 팬 시스템 효과)입니다. 입력하면 값과 확인용 합계가 바로 바뀝니다. 옮겨 적는 것은 사용자가 합니다 (앱끼리 자동 연결 없음). 선정 ESP 가 정해지면 카탈로그 정압-풍량 곡선으로 풍량을 확인.</p></div>`;
+    <p class="note">「자동」은 이 앱이 구한 값, 「기본 0」은 해당 없으면 그대로 두는 값, 「직접 입력」은 제품 자료가 있어야 하는 값입니다. 옮겨 적는 것은 사용자가 합니다 (앱끼리 자동 연결 없음). 선정 ESP 가 정해지면 카탈로그 정압-풍량 곡선으로 풍량을 확인.</p></div>`;
 }
 // 천정형팬 — 팬마다 경로 손실 (가장 먼 팬이 늘 가장 불리하지는 않다)
 function fanPathsHTML(){
@@ -1145,7 +1166,7 @@ function renderRef(){
   <tr><td>③</td><td class="l">용량부하 — 전열교환기·인라인덕트팬 ESP 표</td><td class="l">받은 항목을 칸 순서대로 적고 팬을 선정한다</td><td class="l">—</td></tr>
   </tbody></table></div>
   <p class="note">이 앱은 ② 단계. 앱끼리 자동 연결하지 않고, 「▶ 옮겨 적을 값」 상자의 번호 순서대로 사용자가 옮겨 적는다 (앱간_값옮기기_표기기준 1.2 · 2.1).</p>
-  <h4>용량계산서 ESP 연계</h4><p>덕트 앱은 직관 마찰(실제 덕트 크기 · 가장 불리한 경로)과 기구 손실 개략(유효풍속 동압 × 3)만 넘긴다. 부속 50%·필터·방화댐퍼·루버/벤트캡 제품 손실·팬 시스템 효과(KDS 4.2(2))·여유 10% 는 용량계산서에서. 제품 손실을 모르는 항목은 0 으로 두지 않는다.</p>
+  <h4>용량계산서 ESP 연계</h4><p>덕트 앱은 직관 마찰(실제 덕트 크기 · 가장 불리한 경로)·기구 손실 개략(유효풍속 동압 × 3)·루버·방화댐퍼·필터·시스템 효과를 넘긴다. 루버 = 학회 2010 표 6.2 ζ(자유면적비 0.5~0.9 보간) × 자유면 풍속 동압, 방화댐퍼 = 커튼형만 ASHRAE Co(사각 CR9-6 Type B 0.19 · 원형 CD9-3 Type C 0.12, 2001 Fundamentals Ch.34) × 덕트 풍속 동압 × 개수, 필터 = 별도 필터가 있을 때만, 팬 시스템 효과 = 팬 앞뒤 직관(KDS 4.5)을 확보하면 0 (사내) · 아니면 제품 자료(KDS 4.2(2) 가산). 그 밖의 형식은 제품값. 부속 50%·여유 10% 는 용량계산서에서.</p>
   <h4>리듀서 (변형부)</h4><p><span class="badge b-red">법정</span> 확대 15° 이하 · 축소 30° 이내 (KCS 31 20 20 3.1.2, 각도 정의 미명시). 앱 기본 = 각 측면(한쪽) 기준 — USFK O&MA 시방 2.11.1.1 「each side 15°, included 30°」. 선택: ASHRAE Fundamentals Ch.21 전체각 15° 이하 권장 · 프로젝트 지정.<br>공기 흐름 방향으로 면마다 판정 · 폭 대칭형 ΔW/2, 편심형 ΔW · 높이 ΔH · 원형 ΔD/2 · 길이 = 이동량 ÷ tan(한쪽 각) · 최소 300 mm <span class="badge b-info">사내</span>.</p>
   <h4>내진 <span class="badge b-red">법정(조건부)</span> — KDS 41 17 00 18.4.5</h4><p>소단면 예외는 단면적 0.6 m² 미만 외에 단위길이당 중량·구조체 고정 조건, 용도(독성·가연성 가스·배연) 제한, 중요도계수·유연한 연결 조건이 함께 있음. 앱은 면적만 보므로 0.6 이상 = 「검토 필요」, 미만 = 「면제 미확정」. 풍속 자동 상향 없음 — 상한·Pa/m 이내의 축소안을 제시하고 설계자가 채택. 행거 길이만으로 면제하는 조건은 넣지 않음.</p>
   <h4>그릴 직부 · 분기 입구 <span class="badge b-info">사내</span></h4><p>덕트 안치수 ≥ 기구 + 한쪽 75 (양쪽 150) mm. 실제 타공·목·프레임·이음부·보강재·댐퍼 삽입 간섭 확인. 분기 45° 입구 길이 = 폭 ÷ 4, 최소 150 mm.</p>
